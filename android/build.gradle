@@ -1,3 +1,7 @@
+def apiPropertiesFile = file("./keys.properties")
+def apiProperties = new Properties()
+apiProperties.load(new FileInputStream(apiPropertiesFile))
+
 buildscript {
   // Buildscript is evaluated before everything else so we can't use getExtOrDefault
   def kotlin_version = rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["MapboxNavigation_kotlinVersion"]
@@ -58,7 +62,6 @@ android {
   defaultConfig {
     minSdkVersion getExtOrIntegerDefault("minSdkVersion")
     targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
-
   }
 
   buildTypes {
@@ -80,9 +83,24 @@ android {
 repositories {
   mavenCentral()
   google()
+  maven {
+    url 'https://api.mapbox.com/downloads/v2/releases/maven'
+    authentication {
+      basic(BasicAuthentication)
+    }
+    credentials {
+      // Do not change the username below.
+      // This should always be `mapbox` (not your username).
+      username = "mapbox"
+      // Use the secret token you stored in gradle.properties as the password
+      password = apiProperties.getProperty('MAPBOX_DOWNLOADS_TOKEN')
+    }
+  }
 }
 
 def kotlin_version = getExtOrDefault("kotlinVersion")
+
+def mapbox_navigation_version = "3.0.1"
 
 dependencies {
   // For < 0.71, this will be from the local maven repo
@@ -90,5 +108,9 @@ dependencies {
   //noinspection GradleDynamicVersion
   implementation "com.facebook.react:react-android:+"
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+
+  // Mapbox dependencies
+  implementation "com.mapbox.navigationcore:android:$mapbox_navigation_version"
+  implementation "com.mapbox.navigationcore:ui-components:$mapbox_navigation_version"
 }
 
