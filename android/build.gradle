@@ -109,6 +109,8 @@ dependencies {
   implementation "com.facebook.react:react-android:+"
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
 
+  implementation "androidx.constraintlayout:constraintlayout:2.1.4"
+
   // Mapbox dependencies
   implementation "com.mapbox.navigationcore:android:$mapbox_navigation_version"
   implementation "com.mapbox.navigationcore:ui-components:$mapbox_navigation_version"

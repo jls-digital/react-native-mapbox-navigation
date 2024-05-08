@@ -14,7 +14,7 @@ interface CommonProps {
   onCancelNavigation?: () => void;
   onArrive?: () => void;
   onMuteChange?: (event: OnMuteChangeEvent) => void;
-  showsEndOfRouteFeedback?: boolean;
+  shouldShowEndOfRouteFeedback?: boolean;
   hideStatusView?: boolean;
   mute?: boolean;
   shouldRerouteProactively?: boolean;
