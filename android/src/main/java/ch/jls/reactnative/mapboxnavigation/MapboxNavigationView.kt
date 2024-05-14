@@ -15,12 +15,15 @@ import com.facebook.react.bridge.Arguments
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.events.RCTEventEmitter
 import com.mapbox.geojson.Point
+import com.mapbox.maps.ImageHolder
 import com.mapbox.maps.MapView
 import com.mapbox.maps.MapboxMap
 import com.mapbox.maps.plugin.LocationPuck2D
 import com.mapbox.maps.plugin.locationcomponent.location
+import com.mapbox.maps.plugin.viewport.viewport
 import com.mapbox.navigation.base.options.NavigationOptions
 import com.mapbox.navigation.core.lifecycle.MapboxNavigationApp
+import com.mapbox.navigation.ui.maps.location.NavigationLocationProvider
 
 @SuppressLint("ViewConstructor")
 class MapboxNavigationView(
@@ -97,7 +100,8 @@ class MapboxNavigationView(
       }
     }
     MapboxNavigationApp.attach(this.context.currentActivity as AppCompatActivity)
-    MapboxNavigationApp.registerObserver(CustomMapboxNavigationObserver())
+    val navigationLocationProvider = NavigationLocationProvider()
+    MapboxNavigationApp.registerObserver(CustomMapboxNavigationObserver(navigationLocationProvider))
     val mapboxNavigation = MapboxNavigationApp.current()
     if (ActivityCompat.checkSelfPermission(
         this.context,
@@ -117,6 +121,16 @@ class MapboxNavigationView(
       return
     }
     mapboxNavigation?.startTripSession()
+    this.viewBinding.mapView.location.apply {
+      this.locationPuck = LocationPuck2D(
+        topImage = ImageHolder.Companion.from(com.mapbox.navigation.ui.maps.R.drawable.mapbox_navigation_puck_icon),
+        bearingImage = ImageHolder.from(com.mapbox.navigation.ui.maps.R.drawable.mapbox_navigation_puck_icon),
+        shadowImage = ImageHolder.Companion.from(com.mapbox.navigation.ui.maps.R.drawable.mapbox_navigation_puck_icon)
+      )
+      setLocationProvider(navigationLocationProvider)
+      puckBearingEnabled = true
+      enabled = true
+    }
   }
 
   // Setters for react native driven properties
