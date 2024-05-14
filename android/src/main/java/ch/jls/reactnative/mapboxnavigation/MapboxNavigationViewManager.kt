@@ -1,4 +1,4 @@
-package com.mapboxnavigation
+package ch.jls.reactnative.mapboxnavigation
 
 import android.content.pm.PackageManager
 import com.facebook.react.bridge.ReactApplicationContext
@@ -6,6 +6,7 @@ import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.annotations.ReactProp
+import com.mapbox.common.MapboxOptions
 import com.mapbox.geojson.Point
 
 class MapboxNavigationViewManager(private var mCallerContext: ReactApplicationContext) :
@@ -22,9 +23,9 @@ class MapboxNavigationViewManager(private var mCallerContext: ReactApplicationCo
         val bundle = app.metaData
         val accessToken = bundle.getString("MAPBOX_ACCESS_TOKEN")
         this.accessToken = accessToken
-//        ResourceOptionsManager.getDefault(mCallerContext, accessToken).update {
-//          tileStoreUsageMode(TileStoreUsageMode.READ_ONLY)
-//        }
+        if (accessToken != null) {
+          MapboxOptions.accessToken = accessToken
+        }
       } catch (e: PackageManager.NameNotFoundException) {
         e.printStackTrace()
       }
@@ -52,7 +53,7 @@ class MapboxNavigationViewManager(private var mCallerContext: ReactApplicationCo
       view.setDestination(null)
       return
     }
-    view.setOrigin(Point.fromLngLat(destination.getDouble(0), destination.getDouble(1)))
+    view.setDestination(Point.fromLngLat(destination.getDouble(0), destination.getDouble(1)))
   }
 
   @ReactProp(name = "waypoints")

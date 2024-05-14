@@ -1,4 +1,4 @@
-package com.mapboxnavigation
+package ch.jls.reactnative.mapboxnavigation
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
@@ -12,6 +12,6 @@ class MapboxNavigationPackage : ReactPackage {
   }
 
   override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
-    return listOf(MapboxNavigationViewManager())
+    return listOf(MapboxNavigationViewManager(reactContext))
   }
 }
