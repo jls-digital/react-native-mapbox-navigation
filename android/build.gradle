@@ -48,7 +48,7 @@ def supportsNamespace() {
 
 android {
   if (supportsNamespace()) {
-    namespace "com.mapboxnavigation"
+    namespace "ch.jls.reactnative.mapboxnavigation"
 
     sourceSets {
       main {
@@ -77,6 +77,10 @@ android {
   compileOptions {
     sourceCompatibility JavaVersion.VERSION_17
     targetCompatibility JavaVersion.VERSION_17
+  }
+
+  buildFeatures {
+    viewBinding true
   }
 }
 
