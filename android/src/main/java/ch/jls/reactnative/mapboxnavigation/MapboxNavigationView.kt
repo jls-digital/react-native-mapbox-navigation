@@ -1,16 +1,20 @@
 package ch.jls.reactnative.mapboxnavigation
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import ch.jls.reactnative.mapboxnavigation.camera.CameraPaddings
 import ch.jls.reactnative.mapboxnavigation.databinding.NavigationViewBinding
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.uimanager.ThemedReactContext
+import com.mapbox.api.directions.v5.DirectionsCriteria
 import com.mapbox.api.directions.v5.models.Bearing
 import com.mapbox.api.directions.v5.models.DirectionsRoute
 import com.mapbox.api.directions.v5.models.RouteOptions
@@ -166,12 +170,6 @@ class MapboxNavigationView(
   private lateinit var routeArrowView: MapboxRouteArrowView
 
   /**
-   * Mapbox Maps entry point obtained from the [MapView].
-   * You need to get a new reference to this object whenever the [MapView] is recreated.
-   */
-  private lateinit var mapboxMap: MapboxMap
-
-  /**
    * Stores and updates the state of whether the voice instructions should be played as they come or muted.
    */
   private var isVoiceInstructionsMuted = false
@@ -263,7 +261,7 @@ class MapboxNavigationView(
     }
 
     override fun onNewLocationMatcherResult(locationMatcherResult: LocationMatcherResult) {
-      Log.d("MapboxNavigation", "onNewLocationMatcherResult: ${locationMatcherResult.enhancedLocation.latitude}, ${locationMatcherResult.enhancedLocation.longitude}")
+      Log.v("MapboxNavigation", "onNewLocationMatcherResult: ${locationMatcherResult.enhancedLocation.latitude}, ${locationMatcherResult.enhancedLocation.longitude}")
       val enhancedLocation = locationMatcherResult.enhancedLocation
       // update location puck's position on the map
       navigationLocationProvider.changePosition(
@@ -284,6 +282,7 @@ class MapboxNavigationView(
             .maxDuration(0) // instant transition
             .build()
         )
+        this@MapboxNavigationView.findRoute()
       }
     }
   }
@@ -370,6 +369,7 @@ class MapboxNavigationView(
 
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
+    Log.d("MapboxNavigation", "onDetachedFromWindow")
     val mapboxNavigation = MapboxNavigationApp.current()
     mapboxNavigation!!.stopTripSession()
 
@@ -378,7 +378,7 @@ class MapboxNavigationView(
     this.mapboxNavigation!!.unregisterRouteProgressObserver(routeProgressObserver)
     this.mapboxNavigation!!.unregisterRouteProgressObserver(replayProgressObserver)
     this.mapboxNavigation!!.unregisterVoiceInstructionsObserver(voiceInstructionsObserver)
-    this.mapboxNavigation!!.mapboxReplayer?.finish()
+    this.mapboxNavigation!!.mapboxReplayer.finish()
   }
 
   private fun onCreate() {
@@ -407,9 +407,36 @@ class MapboxNavigationView(
     this.mapboxNavigation!!.registerRouteProgressObserver(routeProgressObserver)
     this.replayProgressObserver = ReplayProgressObserver(this.mapboxNavigation!!.mapboxReplayer)
     this.mapboxNavigation!!.registerRouteProgressObserver(replayProgressObserver)
-    this.mapboxNavigation!!.startReplayTripSession()
+    if (ActivityCompat.checkSelfPermission(
+        this.context,
+        Manifest.permission.ACCESS_FINE_LOCATION
+      ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
+        this.context,
+        Manifest.permission.ACCESS_COARSE_LOCATION
+      ) != PackageManager.PERMISSION_GRANTED
+    ) {
+      // TODO: Consider calling
+      //    ActivityCompat#requestPermissions
+      // here to request the missing permissions, and then overriding
+      //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+      //                                          int[] grantResults)
+      // to handle the case where the user grants the permission. See the documentation
+      // for ActivityCompat#requestPermissions for more details.
+      return
+    }
+    this.mapboxNavigation!!.startTripSession()
 
-    this.initNavigation()
+    // initialize location puck
+    binding.mapView.location.apply {
+      setLocationProvider(navigationLocationProvider)
+      this.locationPuck = LocationPuck2D(
+        bearingImage = ImageHolder.Companion.from(
+          com.mapbox.navigation.R.drawable.mapbox_navigation_puck_icon
+        )
+      )
+      puckBearingEnabled = true
+      enabled = true
+    }
 
     // initialize Navigation Camera
     viewportDataSource = MapboxNavigationViewportDataSource(binding.mapView.mapboxMap)
@@ -522,29 +549,6 @@ class MapboxNavigationView(
 
     // set initial sounds button state
     binding.soundButton.mute()
-    this.destination?.let { findRoute(it) }
-  }
-
-  private fun initNavigation() {
-    Log.d("MapboxNavigation", "initNavigation")
-    MapboxNavigationApp.setup(
-      NavigationOptions.Builder(this.context)
-        .build()
-    )
-
-    // initialize location puck
-    binding.mapView.location.apply {
-      setLocationProvider(navigationLocationProvider)
-      this.locationPuck = LocationPuck2D(
-        bearingImage = ImageHolder.Companion.from(
-          com.mapbox.navigation.R.drawable.mapbox_navigation_puck_icon
-        )
-      )
-      puckBearingEnabled = true
-      enabled = true
-    }
-
-    replayOriginLocation()
   }
 
   // Setters for react native driven properties
@@ -602,25 +606,30 @@ class MapboxNavigationView(
     }
   }
 
-  private fun findRoute(destination: Point) {
-    Log.d("MapboxNavigation", "findRoute")
+  private fun findRoute() {
+    Log.d("MapboxNavigation", "findRoute, lastLocation: ${navigationLocationProvider.lastLocation}")
     val originLocation = navigationLocationProvider.lastLocation ?: return
     val originPoint = Point.fromLngLat(originLocation.longitude, originLocation.latitude)
     if (this.destination == null) {
       sendErrorToReact("Destination is required")
       return
     }
-    val route: List<Point> = listOf(originPoint) + waypoints + destination
+    val route: List<Point> = listOf(originPoint) + waypoints + destination!!
     // execute a route request
     // it's recommended to use the
     // applyDefaultNavigationOptions and applyLanguageAndVoiceUnitOptions
     // that make sure the route request is optimized
     // to allow for support of all of the Navigation SDK features
+    Log.d("MapboxNavigation", "$route")
     mapboxNavigation!!.requestRoutes(
       RouteOptions.builder()
         .applyDefaultNavigationOptions()
         .applyLanguageAndVoiceUnitOptions(this.context)
         .coordinatesList(route)
+        .waypointIndicesList(listOf(0, route.size - 1))
+        .profile(DirectionsCriteria.PROFILE_DRIVING)
+        .enableRefresh(false)
+        .steps(true)
         .apply {
           // provide the bearing for the origin of the request to ensure
           // that the returned route faces in the direction of the current user movement
@@ -636,21 +645,22 @@ class MapboxNavigationView(
             )
           }
         }
-        .layersList(listOf(mapboxNavigation!!.getZLevel(), null))
+//        .layersList(listOf(mapboxNavigation!!.getZLevel(), null))
         .build(),
       object : NavigationRouterCallback {
         override fun onCanceled(routeOptions: RouteOptions, routerOrigin: String) {
-          // no impl
+          Log.e("MapboxNavigation", "findRoute: onCanceled, routeOptions: $routeOptions, routerOrigin: $routerOrigin")
         }
 
         override fun onFailure(reasons: List<RouterFailure>, routeOptions: RouteOptions) {
-          // no impl
+          Log.e("MapboxNavigation", "findRoute: onFailure, reasons: $reasons, routeOptions: $routeOptions")
         }
 
         override fun onRoutesReady(
           routes: List<NavigationRoute>,
           routerOrigin: String
         ) {
+          Log.d("MapboxNavigation", "onRoutesReady")
           setRouteAndStartNavigation(routes)
         }
       }
