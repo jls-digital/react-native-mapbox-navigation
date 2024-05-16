@@ -1,8 +1,5 @@
 import { Platform, requireNativeComponent, UIManager } from 'react-native';
-import type {
-  MapboxNavigationProps,
-  NativeNavigationProps,
-} from './types/props.type';
+import type { MapboxNavigationProps, NativeNavigationProps } from './types';
 import type { FunctionComponent } from 'react';
 import { mapToNativeCoordinates } from './utils/coordinates-mapper.util';
 import React from 'react';
@@ -27,7 +24,6 @@ export const MapboxNavigationView: FunctionComponent<MapboxNavigationProps> = (
 ) => {
   const nativeProps: NativeNavigationProps = {
     ...props,
-    origin: mapToNativeCoordinates(props.origin),
     destination: mapToNativeCoordinates(props.destination),
     waypoints: props.waypoints
       ? props.waypoints.map(mapToNativeCoordinates)
