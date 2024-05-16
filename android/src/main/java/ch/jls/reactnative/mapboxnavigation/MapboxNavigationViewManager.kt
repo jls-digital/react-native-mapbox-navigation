@@ -38,15 +38,6 @@ class MapboxNavigationViewManager(private var mCallerContext: ReactApplicationCo
     return MapboxNavigationView(reactContext, this.accessToken)
   }
 
-  @ReactProp(name = "origin")
-  fun setOrigin(view: MapboxNavigationView, origin: ReadableArray?) {
-    if (origin == null) {
-      view.setOrigin(null)
-      return
-    }
-    view.setOrigin(Point.fromLngLat(origin.getDouble(0), origin.getDouble(1)))
-  }
-
   @ReactProp(name = "destination")
   fun setDestination(view: MapboxNavigationView, destination: ReadableArray?) {
     if (destination == null) {

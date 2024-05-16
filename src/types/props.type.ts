@@ -21,13 +21,11 @@ interface CommonProps {
 }
 
 export interface MapboxNavigationProps extends CommonProps {
-  origin: Coordinates;
   destination: Coordinates;
   waypoints?: Array<Coordinates>;
 }
 
 export interface NativeNavigationProps extends CommonProps {
-  origin: NativeCoordinates;
   destination: NativeCoordinates;
   waypoints: Array<NativeCoordinates>;
 }
