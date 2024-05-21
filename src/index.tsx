@@ -25,6 +25,9 @@ export const MapboxNavigationView: FunctionComponent<MapboxNavigationProps> = (
   const nativeProps: NativeNavigationProps = {
     ...props,
     destination: mapToNativeCoordinates(props.destination),
+    simulationOrigin: props.simulationOrigin
+      ? mapToNativeCoordinates(props.simulationOrigin)
+      : undefined,
     waypoints: props.waypoints
       ? props.waypoints.map(mapToNativeCoordinates)
       : [],
