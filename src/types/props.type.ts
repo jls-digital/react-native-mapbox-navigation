@@ -22,10 +22,12 @@ interface CommonProps {
 
 export interface MapboxNavigationProps extends CommonProps {
   destination: Coordinates;
+  simulationOrigin?: Coordinates;
   waypoints?: Array<Coordinates>;
 }
 
 export interface NativeNavigationProps extends CommonProps {
   destination: NativeCoordinates;
+  simulationOrigin?: NativeCoordinates;
   waypoints: Array<NativeCoordinates>;
 }

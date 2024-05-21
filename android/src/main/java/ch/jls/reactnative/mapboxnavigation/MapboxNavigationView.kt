@@ -22,8 +22,6 @@ import com.mapbox.bindgen.Expected
 import com.mapbox.common.location.Location
 import com.mapbox.geojson.Point
 import com.mapbox.maps.ImageHolder
-import com.mapbox.maps.MapView
-import com.mapbox.maps.MapboxMap
 import com.mapbox.maps.plugin.LocationPuck2D
 import com.mapbox.maps.plugin.animation.camera
 import com.mapbox.maps.plugin.locationcomponent.location
@@ -105,6 +103,11 @@ class MapboxNavigationView(
    * Navigation destination point
    */
   private var destination: Point? = null
+
+  /**
+   * Origin for simulation (will be used if shouldSimulateRoute is true)
+   */
+  private var simulationOrigin: Point? = null
 
   /**
    * List of waypoints for the navigation to follow
@@ -261,7 +264,10 @@ class MapboxNavigationView(
     }
 
     override fun onNewLocationMatcherResult(locationMatcherResult: LocationMatcherResult) {
-      Log.v("MapboxNavigation", "onNewLocationMatcherResult: ${locationMatcherResult.enhancedLocation.latitude}, ${locationMatcherResult.enhancedLocation.longitude}")
+      Log.v(
+        "MapboxNavigation",
+        "onNewLocationMatcherResult: ${locationMatcherResult.enhancedLocation.latitude}, ${locationMatcherResult.enhancedLocation.longitude}"
+      )
       val enhancedLocation = locationMatcherResult.enhancedLocation
       // update location puck's position on the map
       navigationLocationProvider.changePosition(
@@ -359,7 +365,7 @@ class MapboxNavigationView(
     }
   }
 
-  private var mapboxNavigation : MapboxNavigation? = null
+  private var mapboxNavigation: MapboxNavigation? = null
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
@@ -370,6 +376,7 @@ class MapboxNavigationView(
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
     Log.d("MapboxNavigation", "onDetachedFromWindow")
+    this.clearRouteAndStopNavigation()
     val mapboxNavigation = MapboxNavigationApp.current()
     mapboxNavigation!!.stopTripSession()
 
@@ -391,7 +398,6 @@ class MapboxNavigationView(
       sendErrorToReact("Destination is required")
     }
     Log.i("MapboxNavigation", "onCreate")
-    Log.i("MapboxNavigation", "binding: ${this.binding}")
 
     if (!MapboxNavigationApp.isSetup()) {
       MapboxNavigationApp.setup {
@@ -400,13 +406,6 @@ class MapboxNavigationView(
     }
     MapboxNavigationApp.attach(this.context.currentActivity as AppCompatActivity)
     this.mapboxNavigation = MapboxNavigationApp.current()
-
-    Log.d("MapboxNavigation", "mapboxNavigation: ${this.mapboxNavigation}")
-    this.mapboxNavigation!!.registerRoutesObserver(routesObserver)
-    this.mapboxNavigation!!.registerLocationObserver(locationObserver)
-    this.mapboxNavigation!!.registerRouteProgressObserver(routeProgressObserver)
-    this.replayProgressObserver = ReplayProgressObserver(this.mapboxNavigation!!.mapboxReplayer)
-    this.mapboxNavigation!!.registerRouteProgressObserver(replayProgressObserver)
     if (ActivityCompat.checkSelfPermission(
         this.context,
         Manifest.permission.ACCESS_FINE_LOCATION
@@ -424,7 +423,11 @@ class MapboxNavigationView(
       // for ActivityCompat#requestPermissions for more details.
       return
     }
-    this.mapboxNavigation!!.startTripSession()
+    if (this.shouldSimulateRoute) {
+      this.mapboxNavigation!!.startReplayTripSession()
+    } else {
+      this.mapboxNavigation!!.startTripSession()
+    }
 
     // initialize location puck
     binding.mapView.location.apply {
@@ -436,6 +439,10 @@ class MapboxNavigationView(
       )
       puckBearingEnabled = true
       enabled = true
+    }
+
+    if (this.shouldSimulateRoute) {
+      setupSimulationOrigin()
     }
 
     // initialize Navigation Camera
@@ -549,6 +556,12 @@ class MapboxNavigationView(
 
     // set initial sounds button state
     binding.soundButton.mute()
+
+    this.mapboxNavigation!!.registerRoutesObserver(routesObserver)
+    this.mapboxNavigation!!.registerLocationObserver(locationObserver)
+    this.mapboxNavigation!!.registerRouteProgressObserver(routeProgressObserver)
+    this.replayProgressObserver = ReplayProgressObserver(this.mapboxNavigation!!.mapboxReplayer)
+    this.mapboxNavigation!!.registerRouteProgressObserver(replayProgressObserver)
   }
 
   // Setters for react native driven properties
@@ -562,6 +575,18 @@ class MapboxNavigationView(
     Log.v(
       "MapboxNavigation",
       "destination set to ${destination.latitude()}, ${destination.longitude()}"
+    )
+  }
+
+  fun setSimulationOrigin(simulationOrigin: Point?) {
+    this.simulationOrigin = simulationOrigin
+    if (simulationOrigin == null) {
+      Log.d("MapboxNavigation", "simulationOrigin set to null")
+      return
+    }
+    Log.i(
+      "MapboxNavigation",
+      "simulationOrigin set to ${simulationOrigin.latitude()}, ${simulationOrigin.longitude()}"
     )
   }
 
@@ -589,16 +614,22 @@ class MapboxNavigationView(
 //    this.shouldRerouteProactively = shouldRerouteProactively
   }
 
-  private fun replayOriginLocation() {
-    Log.d("MapboxNavigation", "replayOriginLocation")
-    Log.d("MapboxNavigation", "mapboxNavigation: ${mapboxNavigation!!.mapboxReplayer}")
+  private fun setupSimulationOrigin() {
+    Log.d("MapboxNavigation", "setupSimulationOrigin")
+    if (this.simulationOrigin == null) {
+      Log.e("MapboxNavigation", "simulationOrigin is required when shouldSimulateRoute is true")
+      return
+    }
     with(mapboxNavigation!!.mapboxReplayer) {
       play()
       pushEvents(
         listOf(
           ReplayRouteMapper.mapToUpdateLocation(
             Date().time.toDouble(),
-            Point.fromLngLat(-122.39726512303575, 37.785128345296805)
+            Point.fromLngLat(
+              this@MapboxNavigationView.simulationOrigin!!.longitude(),
+              this@MapboxNavigationView.simulationOrigin!!.latitude()
+            )
           )
         )
       )
@@ -649,11 +680,17 @@ class MapboxNavigationView(
         .build(),
       object : NavigationRouterCallback {
         override fun onCanceled(routeOptions: RouteOptions, routerOrigin: String) {
-          Log.e("MapboxNavigation", "findRoute: onCanceled, routeOptions: $routeOptions, routerOrigin: $routerOrigin")
+          Log.e(
+            "MapboxNavigation",
+            "findRoute: onCanceled, routeOptions: $routeOptions, routerOrigin: $routerOrigin"
+          )
         }
 
         override fun onFailure(reasons: List<RouterFailure>, routeOptions: RouteOptions) {
-          Log.e("MapboxNavigation", "findRoute: onFailure, reasons: $reasons, routeOptions: $routeOptions")
+          Log.e(
+            "MapboxNavigation",
+            "findRoute: onFailure, reasons: $reasons, routeOptions: $routeOptions"
+          )
         }
 
         override fun onRoutesReady(
@@ -679,10 +716,12 @@ class MapboxNavigationView(
     binding.tripProgressCard.visibility = View.VISIBLE
 
     // move the camera to overview when new route is available
-    navigationCamera.requestNavigationCameraToOverview()
+    navigationCamera.requestNavigationCameraToFollowing()
 
     // start simulation
-    startSimulation(routes.first().directionsRoute)
+    if (this.shouldSimulateRoute) {
+      startSimulation(routes.first().directionsRoute)
+    }
   }
 
   private fun clearRouteAndStopNavigation() {

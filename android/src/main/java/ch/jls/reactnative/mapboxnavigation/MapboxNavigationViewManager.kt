@@ -47,6 +47,15 @@ class MapboxNavigationViewManager(private var mCallerContext: ReactApplicationCo
     view.setDestination(Point.fromLngLat(destination.getDouble(0), destination.getDouble(1)))
   }
 
+  @ReactProp(name = "simulationOrigin")
+  fun setSimulationOrigin(view: MapboxNavigationView, simulationOrigin: ReadableArray?) {
+    if (simulationOrigin == null) {
+      view.setSimulationOrigin(null)
+      return
+    }
+    view.setSimulationOrigin(Point.fromLngLat(simulationOrigin.getDouble(0), simulationOrigin.getDouble(1)))
+  }
+
   @ReactProp(name = "waypoints")
   fun setWaypoints(view: MapboxNavigationView, waypoints: ReadableArray?) {
     view.resetWaypoints()
