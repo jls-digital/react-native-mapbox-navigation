@@ -716,7 +716,11 @@ class MapboxNavigationView(
     binding.tripProgressCard.visibility = View.VISIBLE
 
     // move the camera to overview when new route is available
-    navigationCamera.requestNavigationCameraToFollowing()
+    navigationCamera.requestNavigationCameraToFollowing(
+      stateTransitionOptions = NavigationCameraTransitionOptions.Builder()
+        .maxDuration(0) // instant transition
+        .build()
+    )
 
     // start simulation
     if (this.shouldSimulateRoute) {
