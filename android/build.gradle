@@ -1,6 +1,13 @@
-def apiPropertiesFile = file("./keys.properties")
 def apiProperties = new Properties()
-apiProperties.load(new FileInputStream(apiPropertiesFile))
+def apiPropertiesFile = file("./keys.properties")
+
+if (apiPropertiesFile.exists()) {
+  apiProperties.load(new FileInputStream(apiPropertiesFile))
+} else if (System.getenv('MAPBOX_DOWNLOADS_TOKEN') != null) {
+  apiProperties.setProperty('MAPBOX_DOWNLOADS_TOKEN', System.getenv('MAPBOX_DOWNLOADS_TOKEN'))
+} else {
+  throw new GradleException("keys.properties file not found and MAPBOX_DOWNLOADS_TOKEN not set")
+}
 
 buildscript {
   // Buildscript is evaluated before everything else so we can't use getExtOrDefault
