@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { Coordinates } from 'react-native-mapbox-navigation';
-import { MapboxNavigationView } from 'react-native-mapbox-navigation';
+import { MapboxNavigation } from 'react-native-mapbox-navigation';
 
 export default function App() {
   const origin: Coordinates = {
@@ -11,5 +11,5 @@ export default function App() {
     latitude: 47.392,
     longitude: 8.39,
   };
-  return <MapboxNavigationView origin={origin} destination={destination} />;
+  return <MapboxNavigation origin={origin} destination={destination} />;
 }

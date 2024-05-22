@@ -104,9 +104,9 @@ class MapboxNavigationView(
   private var destination: Point? = null
 
   /**
-   * Origin for simulation (will be used if shouldSimulateRoute is true)
+   * Navigation origin point
    */
-  private var simulationOrigin: Point? = null
+  private var origin: Point? = null
 
   /**
    * List of waypoints for the navigation to follow
@@ -589,15 +589,15 @@ class MapboxNavigationView(
     )
   }
 
-  fun setSimulationOrigin(simulationOrigin: Point?) {
-    this.simulationOrigin = simulationOrigin
-    if (simulationOrigin == null) {
+  fun setOrigin(origin: Point?) {
+    this.origin = origin
+    if (origin == null) {
       Log.d("MapboxNavigation", "simulationOrigin set to null")
       return
     }
     Log.i(
       "MapboxNavigation",
-      "simulationOrigin set to ${simulationOrigin.latitude()}, ${simulationOrigin.longitude()}"
+      "simulationOrigin set to ${origin.latitude()}, ${origin.longitude()}"
     )
   }
 
@@ -627,8 +627,8 @@ class MapboxNavigationView(
 
   private fun setupSimulationOrigin() {
     Log.d("MapboxNavigation", "setupSimulationOrigin")
-    if (this.simulationOrigin == null) {
-      Log.e("MapboxNavigation", "simulationOrigin is required when shouldSimulateRoute is true")
+    if (this.origin == null) {
+      Log.e("MapboxNavigation", "origin is required when shouldSimulateRoute is true")
       return
     }
     with(mapboxNavigation!!.mapboxReplayer) {
@@ -641,8 +641,8 @@ class MapboxNavigationView(
           ReplayRouteMapper.mapToUpdateLocation(
             Date().time.toDouble(),
             Point.fromLngLat(
-              this@MapboxNavigationView.simulationOrigin!!.longitude(),
-              this@MapboxNavigationView.simulationOrigin!!.latitude()
+              this@MapboxNavigationView.origin!!.longitude(),
+              this@MapboxNavigationView.origin!!.latitude()
             )
           )
         )
