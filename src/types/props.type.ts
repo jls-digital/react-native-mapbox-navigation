@@ -51,7 +51,7 @@ export interface MapboxNavigationProps extends CommonProps {
   /**
    * Origin coordinates for simulation.
    */
-  simulationOrigin?: Coordinates;
+  origin?: Coordinates;
   /**
    * Array of waypoints to visit along the route.
    */
@@ -60,6 +60,6 @@ export interface MapboxNavigationProps extends CommonProps {
 
 export interface NativeNavigationProps extends CommonProps {
   destination: NativeCoordinates;
-  simulationOrigin?: NativeCoordinates;
+  origin?: NativeCoordinates;
   waypoints: Array<NativeCoordinates>;
 }
