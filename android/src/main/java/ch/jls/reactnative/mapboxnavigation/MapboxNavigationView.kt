@@ -319,9 +319,13 @@ class MapboxNavigationView(
     )
 
     // update bottom trip progress summary
-    binding.tripProgressView.render(
-      tripProgressApi.getTripProgress(routeProgress)
-    )
+    val tripProgress = tripProgressApi.getTripProgress(routeProgress)
+    Log.v("MapboxNavigation", "Rendering trip update")
+    Log.v("MapboxNavigation", "distanceRemaining: ${tripProgress.distanceRemaining}")
+    Log.v("MapboxNavigation", "timeRemaining: ${tripProgress.totalTimeRemaining}")
+    Log.v("MapboxNavigation", "percentRouteTraveled: ${tripProgress.percentRouteTraveled}")
+    Log.v("MapboxNavigation", "estimatedTimeToArrival: ${tripProgress.estimatedTimeToArrival}")
+    binding.tripProgressView.render(tripProgress)
   }
 
   /**
