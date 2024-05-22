@@ -15,7 +15,6 @@ import ch.jls.reactnative.mapboxnavigation.databinding.NavigationViewBinding
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.uimanager.ThemedReactContext
 import com.mapbox.api.directions.v5.DirectionsCriteria
-import com.mapbox.api.directions.v5.models.Bearing
 import com.mapbox.api.directions.v5.models.DirectionsRoute
 import com.mapbox.api.directions.v5.models.RouteOptions
 import com.mapbox.bindgen.Expected
@@ -661,12 +660,12 @@ class MapboxNavigationView(
       return
     }
     val route: List<Point> = listOf(originPoint) + waypoints + destination!!
+    Log.d("MapboxNavigation", "$route")
     // execute a route request
     // it's recommended to use the
     // applyDefaultNavigationOptions and applyLanguageAndVoiceUnitOptions
     // that make sure the route request is optimized
     // to allow for support of all of the Navigation SDK features
-    Log.d("MapboxNavigation", "$route")
     mapboxNavigation!!.requestRoutes(
       RouteOptions.builder()
         .applyDefaultNavigationOptions()
@@ -676,22 +675,6 @@ class MapboxNavigationView(
         .profile(DirectionsCriteria.PROFILE_DRIVING)
         .enableRefresh(false)
         .steps(true)
-        .apply {
-          // provide the bearing for the origin of the request to ensure
-          // that the returned route faces in the direction of the current user movement
-          originLocation.bearing?.let { bearing ->
-            bearingsList(
-              listOf(
-                Bearing.builder()
-                  .angle(bearing)
-                  .degrees(45.0)
-                  .build(),
-                null
-              )
-            )
-          }
-        }
-//        .layersList(listOf(mapboxNavigation!!.getZLevel(), null))
         .build(),
       object : NavigationRouterCallback {
         override fun onCanceled(routeOptions: RouteOptions, routerOrigin: String) {
