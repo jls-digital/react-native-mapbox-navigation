@@ -10,16 +10,16 @@ const LINKING_ERROR =
   '- You rebuilt the app after installing the package\n' +
   '- You are not using Expo Go\n';
 
-const ComponentName = 'MapboxNavigationView';
+const ComponentName = 'MapboxNavigation';
 
-const NativeMapboxNavigationView =
+const NativeMapboxNavigation =
   UIManager.getViewManagerConfig(ComponentName) != null
     ? requireNativeComponent<NativeNavigationProps>(ComponentName)
     : () => {
         throw new Error(LINKING_ERROR);
       };
 
-export const MapboxNavigationView: FunctionComponent<MapboxNavigationProps> = (
+export const MapboxNavigation: FunctionComponent<MapboxNavigationProps> = (
   props
 ) => {
   const nativeProps: NativeNavigationProps = {
@@ -31,7 +31,7 @@ export const MapboxNavigationView: FunctionComponent<MapboxNavigationProps> = (
       : [],
   };
 
-  return <NativeMapboxNavigationView {...nativeProps} />;
+  return <NativeMapboxNavigation {...nativeProps} />;
 };
 
 export * from './types';

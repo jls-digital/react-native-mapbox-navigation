@@ -49,9 +49,9 @@ export interface MapboxNavigationProps extends CommonProps {
    */
   destination: Coordinates;
   /**
-   * Origin coordinates for simulation.
+   * Origin coordinates.
    */
-  origin?: Coordinates;
+  origin: Coordinates;
   /**
    * Array of waypoints to visit along the route.
    */

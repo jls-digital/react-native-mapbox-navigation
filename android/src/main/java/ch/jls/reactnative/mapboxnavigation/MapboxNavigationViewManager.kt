@@ -32,7 +32,7 @@ class MapboxNavigationViewManager(private var mCallerContext: ReactApplicationCo
     }
   }
 
-  override fun getName() = "MapboxNavigationView"
+  override fun getName() = "MapboxNavigation"
 
   override fun createViewInstance(reactContext: ThemedReactContext): MapboxNavigationView {
     return MapboxNavigationView(reactContext, this.accessToken)
@@ -47,13 +47,13 @@ class MapboxNavigationViewManager(private var mCallerContext: ReactApplicationCo
     view.setDestination(Point.fromLngLat(destination.getDouble(0), destination.getDouble(1)))
   }
 
-  @ReactProp(name = "simulationOrigin")
-  fun setSimulationOrigin(view: MapboxNavigationView, simulationOrigin: ReadableArray?) {
-    if (simulationOrigin == null) {
-      view.setSimulationOrigin(null)
+  @ReactProp(name = "origin")
+  fun setOrigin(view: MapboxNavigationView, origin: ReadableArray?) {
+    if (origin == null) {
+      view.setOrigin(null)
       return
     }
-    view.setSimulationOrigin(Point.fromLngLat(simulationOrigin.getDouble(0), simulationOrigin.getDouble(1)))
+    view.setOrigin(Point.fromLngLat(origin.getDouble(0), origin.getDouble(1)))
   }
 
   @ReactProp(name = "waypoints")
