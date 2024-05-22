@@ -18,14 +18,14 @@ extension UIView {
 
 class MapboxNavigationView: UIView {
   weak var navViewController: NavigationViewController?
-  
+
   var embedded: Bool
   var embedding: Bool
-  
+
   @objc var origin: NSArray = [] {
     didSet { setNeedsLayout() }
   }
-  
+
   @objc var destination: NSArray = [] {
     didSet { setNeedsLayout() }
   }
@@ -33,50 +33,47 @@ class MapboxNavigationView: UIView {
   @objc var waypoints: NSArray = [] {
     didSet { setNeedsLayout() }
   }
-  
+
   @objc var shouldSimulateRoute: Bool = false
-  @objc var showsEndOfRouteFeedback: Bool = false
-  @objc var hideStatusView: Bool = false
   @objc var mute: Bool = false
-  @objc var shouldRerouteProactively: Bool = true
-  
+
   @objc var onLocationChange: RCTDirectEventBlock?
   @objc var onRouteProgressChange: RCTDirectEventBlock?
   @objc var onError: RCTDirectEventBlock?
   @objc var onCancelNavigation: RCTDirectEventBlock?
   @objc var onArrive: RCTDirectEventBlock?
   @objc var onMuteChange: RCTDirectEventBlock?
-  
+
   override init(frame: CGRect) {
     self.embedded = false
     self.embedding = false
     super.init(frame: frame)
   }
-  
+
   required init?(coder aDecoder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
-  
+
   override func layoutSubviews() {
     super.layoutSubviews()
-    
+
     if (navViewController == nil && !embedding && !embedded) {
       embed()
     } else {
       navViewController?.view.frame = bounds
     }
   }
-  
+
   override func removeFromSuperview() {
     super.removeFromSuperview()
     // cleanup and teardown any existing resources
     self.navViewController?.removeFromParent()
   }
-  
+
   @objc private func toggleMute(sender: UIButton) {
     onMuteChange?(["isMuted": sender.isSelected]);
   }
-  
+
   private func embed() {
     guard origin.count == 2 && destination.count == 2 else { return }
     
@@ -89,7 +86,7 @@ class MapboxNavigationView: UIView {
       guard let strongSelf = self, let parentVC = strongSelf.parentViewController else {
         return
       }
-      
+
       switch result {
         case .failure(let error):
           strongSelf.onError!(["message": error.localizedDescription])
@@ -97,7 +94,7 @@ class MapboxNavigationView: UIView {
           guard self != nil else {
             return
           }
-          
+
           let navigationService = MapboxNavigationService(
             routeResponse: response,
             routeIndex: 0,
@@ -109,39 +106,39 @@ class MapboxNavigationView: UIView {
             simulating: strongSelf.shouldSimulateRoute ? .always : .never,
             routerType: nil
           )
-        
-          navigationService.router.reroutesProactively = strongSelf.shouldRerouteProactively
-          
+
+          navigationService.router.reroutesProactively = false
+
           let navigationOptions = NavigationOptions(navigationService: navigationService)
           let vc = NavigationViewController(for: response, routeIndex: 0, routeOptions: options, navigationOptions: navigationOptions)
 
-          vc.showsEndOfRouteFeedback = strongSelf.showsEndOfRouteFeedback
-          StatusView.appearance().isHidden = strongSelf.hideStatusView
+          vc.showsEndOfRouteFeedback = false
+          StatusView.appearance().isHidden = false
 
           NavigationSettings.shared.voiceMuted = strongSelf.mute;
-          
+
           vc.delegate = strongSelf
-        
+
           parentVC.addChild(vc)
           strongSelf.addSubview(vc.view)
           vc.view.frame = strongSelf.bounds
           vc.didMove(toParent: parentVC)
           strongSelf.navViewController = vc
-        
+
           if let muteButton = vc.floatingButtons?[1] {
             muteButton.addTarget(self, action: #selector(self?.toggleMute(sender:)), for: .touchUpInside)
           }
       }
-      
+
       strongSelf.embedding = false
       strongSelf.embedded = true
-      
+
 
     }
   }
-  
+
   // MARK: Helper Functions
-  
+
   // MARK: - Route Creation
   /**
    * Creates a route out of the origin, destination and potential waypoints which lay between them
@@ -149,17 +146,17 @@ class MapboxNavigationView: UIView {
   private func createRoute() -> Array<Waypoint> {
     let originWaypoint = createWaypoint(from: origin)
     let destinationWaypoint = createWaypoint(from: destination)
-    
+
     originWaypoint.separatesLegs = false
     let additionalWaypoints = waypoints.map { coordinate -> Waypoint in
       let waypoint = createWaypoint(from: coordinate as! NSArray)
       waypoint.separatesLegs = false
       return waypoint
     }
-      
+
     return [originWaypoint] + additionalWaypoints + [destinationWaypoint]
   }
-  
+
   /**
    * Creates a waypoint out of an array of coordinates.
    * The coordinates are expected to be in the format [longitude, latitude]
@@ -177,14 +174,14 @@ extension MapboxNavigationView: NavigationViewControllerDelegate {
                             "fractionTraveled": progress.fractionTraveled,
                             "distanceRemaining": progress.distanceRemaining])
   }
-  
+
   func navigationViewControllerDidDismiss(_ navigationViewController: NavigationViewController, byCanceling canceled: Bool) {
     if (!canceled) {
       return;
     }
     onCancelNavigation?(["message": ""]);
   }
-  
+
   func navigationViewController(_ navigationViewController: NavigationViewController, didArriveAt waypoint: Waypoint) -> Bool {
     onArrive?(["message": ""]);
     return true;
