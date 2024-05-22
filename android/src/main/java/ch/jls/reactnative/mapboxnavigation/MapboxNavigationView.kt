@@ -381,15 +381,23 @@ class MapboxNavigationView(
     super.onDetachedFromWindow()
     Log.d("MapboxNavigation", "onDetachedFromWindow")
     this.clearRouteAndStopNavigation()
-    val mapboxNavigation = MapboxNavigationApp.current()
-    mapboxNavigation!!.stopTripSession()
+    this.mapboxNavigation!!.stopTripSession()
 
     this.mapboxNavigation!!.unregisterRoutesObserver(routesObserver)
     this.mapboxNavigation!!.unregisterLocationObserver(locationObserver)
     this.mapboxNavigation!!.unregisterRouteProgressObserver(routeProgressObserver)
     this.mapboxNavigation!!.unregisterRouteProgressObserver(replayProgressObserver)
     this.mapboxNavigation!!.unregisterVoiceInstructionsObserver(voiceInstructionsObserver)
+
+    this.locationObserver.firstLocationUpdateReceived = false
+
     this.mapboxNavigation!!.mapboxReplayer.finish()
+    this.maneuverApi.cancel()
+    this.routeLineApi.cancel()
+    this.routeLineView.cancel()
+    this.speechApi.cancel()
+    this.voiceInstructionsPlayer.shutdown()
+    MapboxNavigationApp.disable()
   }
 
   private fun onCreate() {
@@ -625,6 +633,9 @@ class MapboxNavigationView(
       return
     }
     with(mapboxNavigation!!.mapboxReplayer) {
+      stop()
+      clearEvents()
+      resetWaypoints()
       play()
       pushEvents(
         listOf(
