@@ -346,11 +346,13 @@ class MapboxNavigationView(
    */
   private val routesObserver = RoutesObserver { routeUpdateResult ->
     if (routeUpdateResult.navigationRoutes.isNotEmpty()) {
+      Log.d("MapboxNavigation", "routesObserver: onRoutesChanged")
       // generate route geometries asynchronously and render them
       routeLineApi.setNavigationRoutes(
         routeUpdateResult.navigationRoutes
       ) { value ->
         binding.mapView.mapboxMap.style?.apply {
+          Log.d("MapboxNavigation", "drawing route: ${value.value}")
           routeLineView.renderRouteDrawData(this, value)
         }
       }
@@ -359,6 +361,7 @@ class MapboxNavigationView(
       viewportDataSource.onRouteChanged(routeUpdateResult.navigationRoutes.first())
       viewportDataSource.evaluate()
     } else {
+      Log.w("MapboxNavigation", "routesObserver: onRoutesChanged, no routes")
       // remove the route line and route arrow from the map
       val style = binding.mapView.mapboxMap.style
       if (style != null) {
@@ -377,7 +380,7 @@ class MapboxNavigationView(
     }
   }
 
-  private val arrivalObserver: ArrivalObserver = object: ArrivalObserver {
+  private val arrivalObserver: ArrivalObserver = object : ArrivalObserver {
     override fun onFinalDestinationArrival(routeProgress: RouteProgress) {
       val parameters = Arguments.createMap()
       parameters.putString("onArrive", "")
