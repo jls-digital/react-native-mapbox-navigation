@@ -13,6 +13,8 @@ import androidx.core.app.ActivityCompat
 import ch.jls.reactnative.mapboxnavigation.camera.CameraPaddings
 import ch.jls.reactnative.mapboxnavigation.databinding.NavigationViewBinding
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.WritableMap
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.uimanager.ThemedReactContext
 import com.mapbox.api.directions.v5.DirectionsCriteria
 import com.mapbox.api.directions.v5.models.DirectionsRoute
@@ -563,6 +565,10 @@ class MapboxNavigationView(
     binding.soundButton.setOnClickListener {
       // mute/unmute voice instructions
       isVoiceInstructionsMuted = !isVoiceInstructionsMuted
+
+      val parameters = Arguments.createMap()
+      parameters.putBoolean("isMuted", isVoiceInstructionsMuted)
+      sendEventToReactNative("onMuteChange", parameters)
     }
 
     // set initial sounds button state
@@ -618,11 +624,7 @@ class MapboxNavigationView(
   }
 
   fun setMute(mute: Boolean) {
-//    this.isVoiceInstructionsMuted = mute
-  }
-
-  fun setShouldRerouteProactively(shouldRerouteProactively: Boolean) {
-//    this.shouldRerouteProactively = shouldRerouteProactively
+    this.isVoiceInstructionsMuted = mute
   }
 
   private fun setupSimulationOrigin() {
@@ -758,13 +760,17 @@ class MapboxNavigationView(
   }
 
   private fun sendErrorToReact(error: String?) {
-    val event = Arguments.createMap()
-    event.putString("error", error)
+    val eventParameters = Arguments.createMap()
+    eventParameters.putString("error", error)
     if (error != null) {
       Log.e("MapboxNavigation", error)
     }
-//    context
-//      .getJSModule(RCTEventEmitter::class.java)
-//      .receiveEvent(id, "onError", event)
+    this.sendEventToReactNative("onError", eventParameters)
+  }
+
+  private fun sendEventToReactNative(eventName: String, parameters: WritableMap?) {
+    context
+      .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+      .emit(eventName, parameters)
   }
 }
