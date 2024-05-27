@@ -35,7 +35,10 @@ import com.mapbox.navigation.base.options.NavigationOptions
 import com.mapbox.navigation.base.route.NavigationRoute
 import com.mapbox.navigation.base.route.NavigationRouterCallback
 import com.mapbox.navigation.base.route.RouterFailure
+import com.mapbox.navigation.base.trip.model.RouteLegProgress
+import com.mapbox.navigation.base.trip.model.RouteProgress
 import com.mapbox.navigation.core.MapboxNavigation
+import com.mapbox.navigation.core.arrival.ArrivalObserver
 import com.mapbox.navigation.core.directions.session.RoutesObserver
 import com.mapbox.navigation.core.formatter.MapboxDistanceFormatter
 import com.mapbox.navigation.core.lifecycle.MapboxNavigationApp
@@ -374,6 +377,22 @@ class MapboxNavigationView(
     }
   }
 
+  private val arrivalObserver: ArrivalObserver = object: ArrivalObserver {
+    override fun onFinalDestinationArrival(routeProgress: RouteProgress) {
+      val parameters = Arguments.createMap()
+      parameters.putString("onArrive", "")
+      sendEventToReactNative("onArrive", parameters)
+    }
+
+    override fun onNextRouteLegStart(routeLegProgress: RouteLegProgress) {
+      // Do something when the user starts a new leg
+    }
+
+    override fun onWaypointArrival(routeProgress: RouteProgress) {
+      // Do something when the user arrives at a waypoint
+    }
+  }
+
   private var mapboxNavigation: MapboxNavigation? = null
 
   override fun onAttachedToWindow() {
@@ -393,6 +412,7 @@ class MapboxNavigationView(
     this.mapboxNavigation!!.unregisterRouteProgressObserver(routeProgressObserver)
     this.mapboxNavigation!!.unregisterRouteProgressObserver(replayProgressObserver)
     this.mapboxNavigation!!.unregisterVoiceInstructionsObserver(voiceInstructionsObserver)
+    this.mapboxNavigation!!.unregisterArrivalObserver(this.arrivalObserver)
 
     this.locationObserver.firstLocationUpdateReceived = false
 
@@ -588,6 +608,7 @@ class MapboxNavigationView(
     this.mapboxNavigation!!.registerRouteProgressObserver(routeProgressObserver)
     this.replayProgressObserver = ReplayProgressObserver(this.mapboxNavigation!!.mapboxReplayer)
     this.mapboxNavigation!!.registerRouteProgressObserver(replayProgressObserver)
+    this.mapboxNavigation!!.registerArrivalObserver(this.arrivalObserver)
   }
 
   // Setters for react native driven properties
