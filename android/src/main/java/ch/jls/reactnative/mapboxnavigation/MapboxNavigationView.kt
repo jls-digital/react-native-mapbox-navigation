@@ -581,7 +581,9 @@ class MapboxNavigationView(
 
     // initialize view interactions
     binding.stop.setOnClickListener {
-      clearRouteAndStopNavigation()
+      val params = Arguments.createMap()
+      params.putString("onCancelNavigation", "Navigation Closed")
+      sendEventToReactNative("onCancelNavigation", params)
     }
     binding.recenter.setOnClickListener {
       navigationCamera.requestNavigationCameraToFollowing()
