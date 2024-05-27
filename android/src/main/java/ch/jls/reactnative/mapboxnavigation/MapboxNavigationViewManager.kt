@@ -78,4 +78,9 @@ class MapboxNavigationViewManager(private var mCallerContext: ReactApplicationCo
   fun setShowsEndOfRouteFeedback(view: MapboxNavigationView, shouldShowEndOfRouteFeedback: Boolean) {
     view.setShouldShowEndOfRouteFeedback(shouldShowEndOfRouteFeedback)
   }
+
+  @ReactProp(name = "mute")
+  fun setMute(view: MapboxNavigationView, mute: Boolean) {
+    view.setMute(mute)
+  }
 }
