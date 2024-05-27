@@ -181,10 +181,14 @@ class MapboxNavigationView(
       field = value
       if (value) {
         binding.soundButton.muteAndExtend(BUTTON_ANIMATION_DURATION)
-        voiceInstructionsPlayer.volume(SpeechVolume(0f))
+        if (this::voiceInstructionsPlayer.isInitialized) {
+          voiceInstructionsPlayer.volume(SpeechVolume(0f))
+        }
       } else {
         binding.soundButton.unmuteAndExtend(BUTTON_ANIMATION_DURATION)
-        voiceInstructionsPlayer.volume(SpeechVolume(1f))
+        if (this::voiceInstructionsPlayer.isInitialized) {
+          voiceInstructionsPlayer.volume(SpeechVolume(1f))
+        }
       }
     }
 
@@ -528,6 +532,11 @@ class MapboxNavigationView(
       this.context,
       Locale.US.language
     )
+    if (this.isVoiceInstructionsMuted) {
+      voiceInstructionsPlayer.volume(SpeechVolume(0f))
+    } else {
+      voiceInstructionsPlayer.volume(SpeechVolume(1f))
+    }
 
     // initialize route line, the routeLineBelowLayerId is specified to place
     // the route line below road labels layer on the map
