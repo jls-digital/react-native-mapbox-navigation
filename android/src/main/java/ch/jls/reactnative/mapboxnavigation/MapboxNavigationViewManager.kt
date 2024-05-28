@@ -116,14 +116,30 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
     Log.d("MapboxNavigation", "Fragment created: ${this.mapboxNavigationFragment}")
   }
 
-  private fun setupLayout(view: View) {
-    Choreographer.getInstance().postFrameCallback(object: Choreographer.FrameCallback {
+  private fun setupLayout(parentView: View) {
+    Choreographer.getInstance().postFrameCallback(object : Choreographer.FrameCallback {
       override fun doFrame(frameTimeNanos: Long) {
-        view.viewTreeObserver.dispatchOnGlobalLayout()
+        layoutChildView(parentView)
+        parentView.viewTreeObserver.dispatchOnGlobalLayout()
         Choreographer.getInstance().postFrameCallback(this)
       }
     })
-    }
+  }
+
+  private fun layoutChildView(parentView: View) {
+    val fragmentView = this.mapboxNavigationFragment?.view ?: return
+
+    val parentWidth = parentView.width
+    val parentHeight = parentView.height
+
+    // When using this fragment approach, this is the only way to ensure that the ConstraintLayout
+    // used at the root of navigation_view.xml is properly sized.
+    fragmentView.measure(
+      View.MeasureSpec.makeMeasureSpec(parentWidth, View.MeasureSpec.EXACTLY),
+      View.MeasureSpec.makeMeasureSpec(parentHeight, View.MeasureSpec.EXACTLY)
+    )
+    fragmentView.layout(0, 0, parentWidth, parentHeight)
+  }
 
   @ReactProp(name = "destination")
   fun setDestination(view: FrameLayout, destination: ReadableArray?) {
