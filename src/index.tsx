@@ -29,7 +29,10 @@ const ComponentName = 'MapboxNavigation';
 
 const NativeMapboxNavigation =
   UIManager.getViewManagerConfig(ComponentName) != null
-    ? requireNativeComponent<NativeNavigationProps & ViewProps>(ComponentName)
+    ? requireNativeComponent<
+        NativeNavigationProps &
+          ViewProps & { ref?: React.MutableRefObject<null> }
+      >(ComponentName)
     : () => {
         throw new Error(LINKING_ERROR);
       };
@@ -139,7 +142,8 @@ export const MapboxNavigation: FunctionComponent<MapboxNavigationProps> = (
     } else {
       return () => {};
     }
-  }, [props]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <NativeMapboxNavigation
