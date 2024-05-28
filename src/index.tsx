@@ -1,12 +1,12 @@
 import {
+  findNodeHandle,
   NativeEventEmitter,
   NativeModules,
   Platform,
   requireNativeComponent,
-  type StyleProp,
   StyleSheet,
   UIManager,
-  type ViewStyle,
+  type ViewProps,
 } from 'react-native';
 import type {
   MapboxNavigationProps,
@@ -16,7 +16,7 @@ import type {
   OnMuteChangeEvent,
   OnRouteProgressChangeEvent,
 } from './types';
-import React, { type FunctionComponent, useEffect } from 'react';
+import React, { type FunctionComponent, useEffect, useRef } from 'react';
 import { mapToNativeCoordinates } from './utils/coordinates-mapper.util';
 
 const LINKING_ERROR =
@@ -30,7 +30,8 @@ const ComponentName = 'MapboxNavigation';
 const NativeMapboxNavigation =
   UIManager.getViewManagerConfig(ComponentName) != null
     ? requireNativeComponent<
-        NativeNavigationProps & { style?: StyleProp<ViewStyle> }
+        NativeNavigationProps &
+          ViewProps & { ref?: React.MutableRefObject<null> }
       >(ComponentName)
     : () => {
         throw new Error(LINKING_ERROR);
@@ -42,9 +43,19 @@ const styles = StyleSheet.create({
   },
 });
 
+const createFragment = (viewId: number) =>
+  UIManager.dispatchViewManagerCommand(
+    viewId,
+    // we are calling the 'create' command
+    UIManager.getViewManagerConfig(ComponentName).Commands.create!.toString(),
+    [viewId]
+  );
+
 export const MapboxNavigation: FunctionComponent<MapboxNavigationProps> = (
   props
 ) => {
+  const ref = useRef(null);
+
   const nativeProps: NativeNavigationProps = {
     ...props,
     destination: mapToNativeCoordinates(props.destination),
@@ -114,6 +125,11 @@ export const MapboxNavigation: FunctionComponent<MapboxNavigationProps> = (
         }
       );
 
+      const viewId = findNodeHandle(ref.current);
+      if (viewId) {
+        createFragment(viewId);
+      }
+
       // Removes the listener once unmounted
       return () => {
         onLocationChangeListener.remove();
@@ -126,9 +142,16 @@ export const MapboxNavigation: FunctionComponent<MapboxNavigationProps> = (
     } else {
       return () => {};
     }
-  }, [props]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  return <NativeMapboxNavigation style={styles.container} {...nativeProps} />;
+  return (
+    <NativeMapboxNavigation
+      style={styles.container}
+      {...nativeProps}
+      ref={ref}
+    />
+  );
 };
 
 export * from './types';
