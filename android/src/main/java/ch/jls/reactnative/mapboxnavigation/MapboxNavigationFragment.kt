@@ -15,7 +15,7 @@ import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import com.mapbox.api.directions.v5.models.Bearing
+import com.mapbox.api.directions.v5.DirectionsCriteria
 import com.mapbox.api.directions.v5.models.DirectionsRoute
 import com.mapbox.api.directions.v5.models.RouteOptions
 import com.mapbox.bindgen.Expected
@@ -25,7 +25,6 @@ import com.mapbox.maps.EdgeInsets
 import com.mapbox.maps.ImageHolder
 import com.mapbox.maps.plugin.LocationPuck2D
 import com.mapbox.maps.plugin.animation.camera
-import com.mapbox.maps.plugin.gestures.gestures
 import com.mapbox.maps.plugin.locationcomponent.location
 import com.mapbox.navigation.base.ExperimentalPreviewMapboxNavigationAPI
 import com.mapbox.navigation.base.TimeFormat
@@ -298,6 +297,10 @@ class MapboxNavigationFragment(
     }
 
     override fun onNewLocationMatcherResult(locationMatcherResult: LocationMatcherResult) {
+      Log.v(
+        "MBNavFragment",
+        "onNewLocationMatcherResult: ${locationMatcherResult.enhancedLocation.latitude}, ${locationMatcherResult.enhancedLocation.longitude}"
+      )
       val enhancedLocation = locationMatcherResult.enhancedLocation
       // update location puck's position on the map
       navigationLocationProvider.changePosition(
@@ -312,12 +315,9 @@ class MapboxNavigationFragment(
       // if this is the first location update the activity has received,
       // it's best to immediately move the camera to the current user location
       if (!firstLocationUpdateReceived) {
+        Log.d("MBNavFragment", "First location update received, initializing navigation")
         firstLocationUpdateReceived = true
-        navigationCamera.requestNavigationCameraToOverview(
-          stateTransitionOptions = NavigationCameraTransitionOptions.Builder()
-            .maxDuration(0) // instant transition
-            .build()
-        )
+        this@MapboxNavigationFragment.findRoute()
       }
     }
   }
@@ -415,6 +415,7 @@ class MapboxNavigationFragment(
     onResumedObserver = object : MapboxNavigationObserver {
       @SuppressLint("MissingPermission")
       override fun onAttached(mapboxNavigation: MapboxNavigation) {
+        Log.d("MBNavFragment", "mapboxNavigation - onAttached")
         mapboxNavigation.registerRoutesObserver(routesObserver)
         mapboxNavigation.registerLocationObserver(locationObserver)
         mapboxNavigation.registerRouteProgressObserver(routeProgressObserver)
@@ -426,10 +427,17 @@ class MapboxNavigationFragment(
         // and later when a route is set also receiving route progress updates.
         // In case of `startReplayTripSession`,
         // location events are emitted by the `MapboxReplayer`
-        mapboxNavigation.startReplayTripSession()
+        if (this@MapboxNavigationFragment.shouldSimulateRoute) {
+          Log.d("MBNavFragment", "mapboxNavigation - starting replay trip session")
+          mapboxNavigation.startReplayTripSession()
+        } else {
+          Log.d("MBNavFragment", "mapboxNavigation - starting trip session")
+          mapboxNavigation.startTripSession()
+        }
       }
 
       override fun onDetached(mapboxNavigation: MapboxNavigation) {
+        Log.d("MBNavFragment", "mapboxNavigation - onDetached")
         mapboxNavigation.unregisterRoutesObserver(routesObserver)
         mapboxNavigation.unregisterLocationObserver(locationObserver)
         mapboxNavigation.unregisterRouteProgressObserver(routeProgressObserver)
@@ -540,12 +548,6 @@ class MapboxNavigationFragment(
     binding.mapView.mapboxMap.loadStyle(NavigationStyles.NAVIGATION_DAY_STYLE) {
       // Ensure that the route line related layers are present before the route arrow
       routeLineView.initializeLayers(it)
-
-      // add long click listener that search for a route to the clicked destination
-      binding.mapView.gestures.addOnMapLongClickListener { point ->
-        findRoute(point)
-        true
-      }
     }
 
     // initialize view interactions
@@ -576,6 +578,8 @@ class MapboxNavigationFragment(
     } else {
       binding.soundButton.unmuteAndExtend(BUTTON_ANIMATION_DURATION)
     }
+
+    this.initNavigation()
   }
 
   override fun onStop() {
@@ -591,6 +595,7 @@ class MapboxNavigationFragment(
   override fun onDestroyView() {
     super.onDestroyView()
     Log.d("MBNavFragment", "onDestroyView")
+    this.clearRouteAndStopNavigation()
   }
 
   override fun onPause() {
@@ -657,44 +662,55 @@ class MapboxNavigationFragment(
     }
   }
 
-  private fun findRoute(destination: Point) {
-    Log.d("MBNavFragment", "findRoute")
+  private fun findRoute() {
+    Log.d("MBNavFragment", "findRoute, lastLocation: ${navigationLocationProvider.lastLocation}")
     val originLocation = navigationLocationProvider.lastLocation ?: return
     val originPoint = Point.fromLngLat(originLocation.longitude, originLocation.latitude)
-
+    if (this.destination == null) {
+      sendErrorToReact("Destination is required")
+      return
+    }
+    val route: List<Point> = listOf(originPoint) + waypoints + this.destination!!
+    Log.d("MBNavFragment", "$route")
     // execute a route request
     // it's recommended to use the
     // applyDefaultNavigationOptions and applyLanguageAndVoiceUnitOptions
     // that make sure the route request is optimized
     // to allow for support of all of the Navigation SDK features
-    mapboxNavigation.requestRoutes(RouteOptions.builder().applyDefaultNavigationOptions()
-      .applyLanguageAndVoiceUnitOptions(this.context)
-      .coordinatesList(listOf(originPoint, destination)).apply {
-        // provide the bearing for the origin of the request to ensure
-        // that the returned route faces in the direction of the current user movement
-        originLocation.bearing?.let { bearing ->
-          bearingsList(
-            listOf(
-              Bearing.builder().angle(bearing).degrees(45.0).build(), null
-            )
-          )
-        }
-      }.layersList(listOf(mapboxNavigation.getZLevel(), null)).build(),
+    mapboxNavigation.requestRoutes(
+      RouteOptions.builder()
+        .applyDefaultNavigationOptions()
+        .applyLanguageAndVoiceUnitOptions(this.context)
+        .coordinatesList(route)
+        .waypointIndicesList(listOf(0, route.size - 1))
+        .profile(DirectionsCriteria.PROFILE_DRIVING)
+        .enableRefresh(false)
+        .steps(true)
+        .build(),
       object : NavigationRouterCallback {
         override fun onCanceled(routeOptions: RouteOptions, routerOrigin: String) {
-          // no impl
+          Log.e(
+            "MBNavFragment",
+            "findRoute: onCanceled, routeOptions: $routeOptions, routerOrigin: $routerOrigin"
+          )
         }
 
         override fun onFailure(reasons: List<RouterFailure>, routeOptions: RouteOptions) {
-          // no impl
+          Log.e(
+            "MBNavFragment",
+            "findRoute: onFailure, reasons: $reasons, routeOptions: $routeOptions"
+          )
         }
 
         override fun onRoutesReady(
-          routes: List<NavigationRoute>, routerOrigin: String
+          routes: List<NavigationRoute>,
+          routerOrigin: String
         ) {
+          Log.d("MBNavFragment", "onRoutesReady")
           setRouteAndStartNavigation(routes)
         }
-      })
+      }
+    )
   }
 
   private fun setRouteAndStartNavigation(routes: List<NavigationRoute>) {
@@ -708,10 +724,16 @@ class MapboxNavigationFragment(
     binding.tripProgressCard.visibility = View.VISIBLE
 
     // move the camera to overview when new route is available
-    navigationCamera.requestNavigationCameraToOverview()
+    navigationCamera.requestNavigationCameraToFollowing(
+      stateTransitionOptions = NavigationCameraTransitionOptions.Builder()
+        .maxDuration(0) // instant transition
+        .build()
+    )
 
-    // start simulation
-    startSimulation(routes.first().directionsRoute)
+    if (this.shouldSimulateRoute) {
+      // start simulation
+      startSimulation(routes.first().directionsRoute)
+    }
   }
 
   private fun clearRouteAndStopNavigation() {
