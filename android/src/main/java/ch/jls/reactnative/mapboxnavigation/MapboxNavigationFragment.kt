@@ -426,6 +426,7 @@ class MapboxNavigationFragment(
         mapboxNavigation.registerRoutesObserver(routesObserver)
         mapboxNavigation.registerLocationObserver(locationObserver)
         mapboxNavigation.registerRouteProgressObserver(routeProgressObserver)
+        mapboxNavigation.registerArrivalObserver(arrivalObserver)
 
         replayProgressObserver = ReplayProgressObserver(mapboxNavigation.mapboxReplayer)
         mapboxNavigation.registerRouteProgressObserver(replayProgressObserver)
@@ -450,6 +451,7 @@ class MapboxNavigationFragment(
         mapboxNavigation.unregisterRouteProgressObserver(routeProgressObserver)
         mapboxNavigation.unregisterRouteProgressObserver(replayProgressObserver)
         mapboxNavigation.unregisterVoiceInstructionsObserver(voiceInstructionsObserver)
+        mapboxNavigation.unregisterArrivalObserver(arrivalObserver)
         mapboxNavigation.mapboxReplayer.finish()
       }
     }
