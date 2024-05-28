@@ -317,6 +317,11 @@ class MapboxNavigationFragment(
       if (!firstLocationUpdateReceived) {
         Log.d("MBNavFragment", "First location update received, initializing navigation")
         firstLocationUpdateReceived = true
+        navigationCamera.requestNavigationCameraToFollowing(
+          stateTransitionOptions = NavigationCameraTransitionOptions.Builder()
+            .maxDuration(0) // instant transition
+            .build()
+          )
         this@MapboxNavigationFragment.findRoute()
       }
     }
@@ -353,10 +358,13 @@ class MapboxNavigationFragment(
     params.putDouble("distanceRemaining", routeProgress.distanceRemaining.toDouble())
     sendEventToReactNative("onRouteProgressChange", params)
 
-    // update bottom trip progress summary
-    binding.tripProgressView.render(
-      tripProgressApi.getTripProgress(routeProgress)
-    )
+    val tripProgress = tripProgressApi.getTripProgress(routeProgress)
+    val timeRemainingString = tripProgressApi.formatter.getTimeRemaining(tripProgress.totalTimeRemaining)
+    val distanceRemainingString = tripProgressApi.formatter.getDistanceRemaining(tripProgress.distanceRemaining)
+    val arrivalTimeString = tripProgressApi.formatter.getEstimatedTimeToArrival(tripProgress.estimatedTimeToArrival)
+    binding.timeRemainingText.text = timeRemainingString
+    binding.distanceRemainingText.text = distanceRemainingString
+    binding.arrivalTimeText.text = arrivalTimeString
   }
 
   /**
