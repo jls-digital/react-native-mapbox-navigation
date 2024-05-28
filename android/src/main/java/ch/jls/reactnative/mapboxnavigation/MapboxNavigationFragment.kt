@@ -444,17 +444,17 @@ class MapboxNavigationFragment(
     inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
   ): View {
     super.onCreateView(inflater, container, savedInstanceState)
-    Log.d("MapboxNavigation", "onCreateView")
+    Log.d("MBNavFragment", "onCreateView")
     binding = NavigationViewBinding.inflate(layoutInflater)
-    Log.d("MapboxNavigation", "Binding: $binding")
+    Log.d("MBNavFragment", "Binding: $binding")
     return binding.root
   }
 
   @SuppressLint("MissingPermission")
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
     super.onViewCreated(view, savedInstanceState)
-    this.view?.doOnDetach { Log.d("MapboxNavigation", "View is detaching") }
-    Log.d("MapboxNavigation", "onViewCreated")
+    this.view?.doOnDetach { Log.d("MBNavFragment", "View is detaching") }
+    Log.d("MBNavFragment", "onViewCreated")
 
     // initialize Navigation Camera
     viewportDataSource = MapboxNavigationViewportDataSource(binding.mapView.mapboxMap)
@@ -580,27 +580,27 @@ class MapboxNavigationFragment(
 
   override fun onStop() {
     super.onStop()
-    Log.d("MapboxNavigation", "onStop")
+    Log.d("MBNavFragment", "onStop")
   }
 
   override fun onResume() {
     super.onResume()
-    Log.d("MapboxNavigation", "onResume")
+    Log.d("MBNavFragment", "onResume")
   }
 
   override fun onDestroyView() {
     super.onDestroyView()
-    Log.d("MapboxNavigation", "onDestroyView")
+    Log.d("MBNavFragment", "onDestroyView")
   }
 
   override fun onPause() {
     super.onPause()
-    Log.d("MapboxNavigation", "onPause")
+    Log.d("MBNavFragment", "onPause")
   }
 
   override fun onDestroy() {
     super.onDestroy()
-    Log.d("MapboxNavigation", "onDestroy")
+    Log.d("MBNavFragment", "onDestroy")
     maneuverApi.cancel()
     routeLineApi.cancel()
     routeLineView.cancel()
@@ -609,7 +609,7 @@ class MapboxNavigationFragment(
   }
 
   private fun initNavigation() {
-    Log.d("MapboxNavigation", "initNavigation")
+    Log.d("MBNavFragment", "initNavigation")
     MapboxNavigationApp.setup(
       NavigationOptions.Builder(this.context).build()
     )
@@ -632,9 +632,9 @@ class MapboxNavigationFragment(
   }
 
   private fun setupSimulationOrigin() {
-    Log.d("MapboxNavigation", "setupSimulationOrigin")
+    Log.d("MBNavFragment", "setupSimulationOrigin")
     if (this.origin == null) {
-      Log.e("MapboxNavigation", "origin is required when shouldSimulateRoute is true")
+      Log.e("MBNavFragment", "origin is required when shouldSimulateRoute is true")
       return
     }
     with(mapboxNavigation.mapboxReplayer) {
@@ -658,7 +658,7 @@ class MapboxNavigationFragment(
   }
 
   private fun findRoute(destination: Point) {
-    Log.d("MapboxNavigation", "findRoute")
+    Log.d("MBNavFragment", "findRoute")
     val originLocation = navigationLocationProvider.lastLocation ?: return
     val originPoint = Point.fromLngLat(originLocation.longitude, originLocation.latitude)
 
@@ -747,7 +747,7 @@ class MapboxNavigationFragment(
   fun setDestination(destination: Point?) {
     this.destination = destination
     if (destination == null) {
-      Log.w("MapboxNavigation", "destination set to null")
+      Log.w("MBNavFragment", "destination set to null")
       return
     }
     Log.d(
@@ -759,7 +759,7 @@ class MapboxNavigationFragment(
   fun setOrigin(origin: Point?) {
     this.origin = origin
     if (origin == null) {
-      Log.d("MapboxNavigation", "simulationOrigin set to null")
+      Log.d("MBNavFragment", "simulationOrigin set to null")
       return
     }
     Log.d(
@@ -792,7 +792,7 @@ class MapboxNavigationFragment(
     val eventParameters = Arguments.createMap()
     eventParameters.putString("error", error)
     if (error != null) {
-      Log.e("MapboxNavigation", error)
+      Log.e("MBNavFragment", error)
     }
     this.sendEventToReactNative("onError", eventParameters)
   }
