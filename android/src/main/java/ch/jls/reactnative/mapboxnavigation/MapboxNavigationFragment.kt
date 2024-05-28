@@ -346,6 +346,13 @@ class MapboxNavigationFragment(
       binding.maneuverView.renderManeuvers(maneuvers)
     })
 
+    val params: WritableMap = Arguments.createMap()
+    params.putDouble("distanceTraveled", routeProgress.distanceTraveled.toDouble())
+    params.putDouble("durationRemaining", routeProgress.durationRemaining)
+    params.putDouble("fractionTraveled", routeProgress.fractionTraveled.toDouble())
+    params.putDouble("distanceRemaining", routeProgress.distanceRemaining.toDouble())
+    sendEventToReactNative("onRouteProgressChange", params)
+
     // update bottom trip progress summary
     binding.tripProgressView.render(
       tripProgressApi.getTripProgress(routeProgress)
