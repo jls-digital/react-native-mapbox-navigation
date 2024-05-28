@@ -80,6 +80,18 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
     return FrameLayout(reactContext)
   }
 
+  override fun onDropViewInstance(view: FrameLayout) {
+    super.onDropViewInstance(view)
+
+    Log.d("MapboxNavigation", "Dropping view instance")
+    val activity = reactContext.currentActivity as FragmentActivity
+    activity.supportFragmentManager
+      .beginTransaction()
+      .remove(this.mapboxNavigationFragment!!)
+      .commit()
+    Log.d("MapboxNavigation", "Fragment removed")
+  }
+
   override fun getCommandsMap(): Map<String, Int> {
     return mapOf("create" to COMMAND_CREATE)
   }
