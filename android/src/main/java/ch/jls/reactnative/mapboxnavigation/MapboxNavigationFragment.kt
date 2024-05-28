@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.doOnDetach
 import androidx.fragment.app.Fragment
 import ch.jls.reactnative.mapboxnavigation.databinding.NavigationViewBinding
 import com.facebook.react.bridge.Arguments
@@ -436,7 +437,7 @@ class MapboxNavigationFragment(
         mapboxNavigation.unregisterVoiceInstructionsObserver(voiceInstructionsObserver)
         mapboxNavigation.mapboxReplayer.finish()
       }
-    }, onInitialize = this::initNavigation
+    }
   )
 
   override fun onCreateView(
@@ -445,13 +446,15 @@ class MapboxNavigationFragment(
     super.onCreateView(inflater, container, savedInstanceState)
     Log.d("MapboxNavigation", "onCreateView")
     binding = NavigationViewBinding.inflate(layoutInflater)
+    Log.d("MapboxNavigation", "Binding: $binding")
     return binding.root
   }
 
   @SuppressLint("MissingPermission")
-  override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-    Log.d("MapboxNavigation", "onCreate")
+  override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    super.onViewCreated(view, savedInstanceState)
+    this.view?.doOnDetach { Log.d("MapboxNavigation", "View is detaching") }
+    Log.d("MapboxNavigation", "onViewCreated")
 
     // initialize Navigation Camera
     viewportDataSource = MapboxNavigationViewportDataSource(binding.mapView.mapboxMap)
@@ -496,14 +499,14 @@ class MapboxNavigationFragment(
     // initialize bottom progress view
     tripProgressApi = MapboxTripProgressApi(
       TripProgressUpdateFormatter.Builder(this.context).distanceRemainingFormatter(
-          DistanceRemainingFormatter(distanceFormatterOptions)
-        ).timeRemainingFormatter(
-          TimeRemainingFormatter(this.context)
-        ).percentRouteTraveledFormatter(
-          PercentDistanceTraveledFormatter()
-        ).estimatedTimeToArrivalFormatter(
-          EstimatedTimeToArrivalFormatter(this.context, TimeFormat.NONE_SPECIFIED)
-        ).build()
+        DistanceRemainingFormatter(distanceFormatterOptions)
+      ).timeRemainingFormatter(
+        TimeRemainingFormatter(this.context)
+      ).percentRouteTraveledFormatter(
+        PercentDistanceTraveledFormatter()
+      ).estimatedTimeToArrivalFormatter(
+        EstimatedTimeToArrivalFormatter(this.context, TimeFormat.NONE_SPECIFIED)
+      ).build()
     )
 
     // initialize voice instructions api and the voice instruction player
@@ -575,6 +578,26 @@ class MapboxNavigationFragment(
     }
   }
 
+  override fun onStop() {
+    super.onStop()
+    Log.d("MapboxNavigation", "onStop")
+  }
+
+  override fun onResume() {
+    super.onResume()
+    Log.d("MapboxNavigation", "onResume")
+  }
+
+  override fun onDestroyView() {
+    super.onDestroyView()
+    Log.d("MapboxNavigation", "onDestroyView")
+  }
+
+  override fun onPause() {
+    super.onPause()
+    Log.d("MapboxNavigation", "onPause")
+  }
+
   override fun onDestroy() {
     super.onDestroy()
     Log.d("MapboxNavigation", "onDestroy")
@@ -603,16 +626,30 @@ class MapboxNavigationFragment(
       enabled = true
     }
 
-    replayOriginLocation()
+    if (this.shouldSimulateRoute) {
+      setupSimulationOrigin()
+    }
   }
 
-  private fun replayOriginLocation() {
+  private fun setupSimulationOrigin() {
+    Log.d("MapboxNavigation", "setupSimulationOrigin")
+    if (this.origin == null) {
+      Log.e("MapboxNavigation", "origin is required when shouldSimulateRoute is true")
+      return
+    }
     with(mapboxNavigation.mapboxReplayer) {
+      stop()
+      clearEvents()
+      resetWaypoints()
       play()
       pushEvents(
         listOf(
           ReplayRouteMapper.mapToUpdateLocation(
-            Date().time.toDouble(), Point.fromLngLat(-122.39726512303575, 37.785128345296805)
+            Date().time.toDouble(),
+            Point.fromLngLat(
+              this@MapboxNavigationFragment.origin!!.longitude(),
+              this@MapboxNavigationFragment.origin!!.latitude()
+            )
           )
         )
       )
@@ -713,7 +750,7 @@ class MapboxNavigationFragment(
       Log.w("MapboxNavigation", "destination set to null")
       return
     }
-    Log.v(
+    Log.d(
       "MapboxNavigation",
       "destination set to ${destination.latitude()}, ${destination.longitude()}"
     )
@@ -725,7 +762,7 @@ class MapboxNavigationFragment(
       Log.d("MapboxNavigation", "simulationOrigin set to null")
       return
     }
-    Log.i(
+    Log.d(
       "MapboxNavigation",
       "simulationOrigin set to ${origin.latitude()}, ${origin.longitude()}"
     )
