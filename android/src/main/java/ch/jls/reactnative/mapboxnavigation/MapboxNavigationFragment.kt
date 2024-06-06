@@ -31,6 +31,7 @@ import com.mapbox.navigation.base.TimeFormat
 import com.mapbox.navigation.base.extensions.applyDefaultNavigationOptions
 import com.mapbox.navigation.base.extensions.applyLanguageAndVoiceUnitOptions
 import com.mapbox.navigation.base.formatter.DistanceFormatterOptions
+import com.mapbox.navigation.base.internal.extensions.inferDeviceLocale
 import com.mapbox.navigation.base.options.NavigationOptions
 import com.mapbox.navigation.base.route.NavigationRoute
 import com.mapbox.navigation.base.route.NavigationRouterCallback
@@ -256,11 +257,13 @@ class MapboxNavigationFragment(
   private val speechCallback =
     MapboxNavigationConsumer<Expected<SpeechError, SpeechValue>> { expected ->
       expected.fold({ error ->
+        Log.d("MBNavFragment", "Speech callback error: ${error.errorMessage}")
         // play the instruction via fallback text-to-speech engine
         voiceInstructionsPlayer.play(
           error.fallback, voiceInstructionsPlayerCallback
         )
       }, { value ->
+        Log.d("MBNavFragment", "Speech callback value: ${value.announcement}")
         // play the sound file from the external generator
         voiceInstructionsPlayer.play(
           value.announcement, voiceInstructionsPlayerCallback
@@ -434,6 +437,7 @@ class MapboxNavigationFragment(
         mapboxNavigation.registerRoutesObserver(routesObserver)
         mapboxNavigation.registerLocationObserver(locationObserver)
         mapboxNavigation.registerRouteProgressObserver(routeProgressObserver)
+        mapboxNavigation.registerVoiceInstructionsObserver(voiceInstructionsObserver)
         mapboxNavigation.registerArrivalObserver(arrivalObserver)
 
         replayProgressObserver = ReplayProgressObserver(mapboxNavigation.mapboxReplayer)
@@ -536,10 +540,10 @@ class MapboxNavigationFragment(
 
     // initialize voice instructions api and the voice instruction player
     speechApi = MapboxSpeechApi(
-      this.context, Locale.US.language
+      this.context, this.context.inferDeviceLocale().toString()
     )
     voiceInstructionsPlayer = MapboxVoiceInstructionsPlayer(
-      this.context, Locale.US.language
+      this.context, this.context.inferDeviceLocale().toString()
     )
     if (this.isVoiceInstructionsMuted) {
       voiceInstructionsPlayer.volume(SpeechVolume(0f))

@@ -111,7 +111,7 @@ repositories {
 
 def kotlin_version = getExtOrDefault("kotlinVersion")
 
-def mapbox_navigation_version = "3.1.0-rc.1"
+def mapbox_navigation_version = "3.1.0"
 
 dependencies {
   // For < 0.71, this will be from the local maven repo
