@@ -84,6 +84,10 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
     super.onDropViewInstance(view)
 
     Log.d("MapboxNavigation", "Dropping view instance")
+    if (reactContext.currentActivity == null) {
+      Log.d("MapboxNavigation", "Activity is already null, no need to remove fragment")
+      return
+    }
     val activity = reactContext.currentActivity as FragmentActivity
     activity.supportFragmentManager
       .beginTransaction()
