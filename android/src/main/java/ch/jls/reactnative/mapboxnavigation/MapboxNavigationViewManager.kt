@@ -164,7 +164,7 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
       this.mapboxNavigationFragment?.setDestination(null)
       return
     }
-    this.destination = Point.fromLngLat(destination.getDouble(0), destination.getDouble(1))
+    this.destination = Point.fromLngLat(destination!!.getDouble(0), destination!!.getDouble(1))
     this.mapboxNavigationFragment?.setDestination(this.destination)
   }
 
@@ -175,7 +175,7 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
       this.mapboxNavigationFragment?.setOrigin(null)
       return
     }
-    this.origin = Point.fromLngLat(origin.getDouble(0), origin.getDouble(1))
+    this.origin = Point.fromLngLat(origin!!.getDouble(0), origin!!.getDouble(1))
     this.mapboxNavigationFragment?.setOrigin(this.origin)
   }
 
@@ -188,7 +188,7 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
     }
     for (i in 0 until waypoints.size()) {
       val entry = waypoints.getArray(i)
-      val point = Point.fromLngLat(entry.getDouble(0), entry.getDouble(1))
+      val point = Point.fromLngLat(entry!!.getDouble(0), entry!!.getDouble(1))
       this.waypoints += point
       this.mapboxNavigationFragment?.addWaypoint(point)
     }
