@@ -19,7 +19,7 @@ buildscript {
   }
 
   dependencies {
-    classpath "com.android.tools.build:gradle:8.1.4"
+    classpath "com.android.tools.build:gradle:8.13.0"
     // noinspection DifferentKotlinGradleVersion
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
   }
@@ -111,7 +111,7 @@ repositories {
 
 def kotlin_version = getExtOrDefault("kotlinVersion")
 
-def mapbox_navigation_version = "3.1.0"
+def mapbox_navigation_version = "3.16.1"
 
 dependencies {
   // For < 0.71, this will be from the local maven repo

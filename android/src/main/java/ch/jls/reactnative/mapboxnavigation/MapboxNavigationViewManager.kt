@@ -188,7 +188,10 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
     }
     for (i in 0 until waypoints.size()) {
       val entry = waypoints.getArray(i)
-      val point = Point.fromLngLat(entry!!.getDouble(0), entry!!.getDouble(1))
+      if (entry == null) {
+        continue
+      }
+      val point = Point.fromLngLat(entry.getDouble(0), entry.getDouble(1))
       this.waypoints += point
       this.mapboxNavigationFragment?.addWaypoint(point)
     }
