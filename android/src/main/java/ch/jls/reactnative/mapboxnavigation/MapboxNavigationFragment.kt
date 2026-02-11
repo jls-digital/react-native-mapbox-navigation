@@ -482,6 +482,9 @@ class MapboxNavigationFragment(
   @SuppressLint("MissingPermission")
   override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
     super.onViewCreated(view, savedInstanceState)
+
+    MapboxNavigationApp.attach(this)
+
     this.view?.doOnDetach { Log.d("MBNavFragment", "View is detaching") }
     Log.d("MBNavFragment", "onViewCreated")
 
@@ -636,9 +639,11 @@ class MapboxNavigationFragment(
 
   private fun initNavigation() {
     Log.d("MBNavFragment", "initNavigation")
-    MapboxNavigationApp.setup(
-      NavigationOptions.Builder(this.context).build()
-    )
+    if (!MapboxNavigationApp.isSetup()) {
+      MapboxNavigationApp.setup(
+        NavigationOptions.Builder(this.context).build()
+      )
+    }
 
     // initialize location puck
     binding.mapView.location.apply {
