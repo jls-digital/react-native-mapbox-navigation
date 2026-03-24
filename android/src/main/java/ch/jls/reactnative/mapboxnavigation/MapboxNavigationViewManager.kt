@@ -110,6 +110,61 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
     }
   }
 
+  /**
+   * Called after the view has been set up and measured.
+   * On new architecture (Fabric), UIManager.dispatchViewManagerCommand doesn't work,
+   * so we create the fragment here as a fallback.
+   */
+  override fun onAfterUpdateTransaction(view: FrameLayout) {
+    super.onAfterUpdateTransaction(view)
+    if (this.mapboxNavigationFragment == null) {
+      Log.d("MapboxNavigation", "onAfterUpdateTransaction: creating fragment for view ${view.id}")
+      createFragmentInView(view)
+    }
+  }
+
+  private fun createFragmentInView(root: FrameLayout) {
+    setupLayout(root)
+
+    val fragment = MapboxNavigationFragment(this.reactContext)
+    this.mapboxNavigationFragment = fragment
+
+    fragment.setOrigin(this.origin)
+    fragment.setDestination(this.destination)
+    fragment.resetWaypoints()
+    this.waypoints.forEach { fragment.addWaypoint(it) }
+    fragment.setShouldSimulateRoute(this.shouldSimulateRoute)
+    fragment.setShouldShowEndOfRouteFeedback(this.shouldShowEndOfRouteFeedback)
+    fragment.setMute(this.isVoiceInstructionsMuted)
+
+    val activity = reactContext.currentActivity
+    if (activity !is FragmentActivity) {
+      Log.e("MapboxNavigation", "currentActivity is not a FragmentActivity, cannot create navigation fragment")
+      return
+    }
+
+    // Fabric-managed views aren't in the standard Android view hierarchy,
+    // so FragmentManager.replace(containerId, ...) fails with "No view found for id".
+    // Instead, add the fragment headlessly, then reparent its view into our FrameLayout.
+    val tag = "mapbox_nav_${root.id}"
+
+    try {
+      activity.supportFragmentManager
+        .beginTransaction()
+        .add(fragment, tag)
+        .commitNow()
+
+      // After commitNow, the fragment's view is created. Add it to our container.
+      fragment.view?.let { fragmentView ->
+        root.addView(fragmentView)
+      }
+
+      Log.d("MapboxNavigation", "Fragment created: $fragment")
+    } catch (e: Exception) {
+      Log.e("MapboxNavigation", "Failed to create navigation fragment", e)
+    }
+  }
+
   private fun createFragment(root: FrameLayout, reactNativeViewId: Int) {
     val parentView = root.findViewById<ViewGroup>(reactNativeViewId)
     setupLayout(parentView)
