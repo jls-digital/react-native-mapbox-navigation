@@ -123,8 +123,8 @@ dependencies {
   implementation "androidx.constraintlayout:constraintlayout:2.1.4"
 
   // Mapbox dependencies
-  implementation "com.mapbox.navigationcore:android:$mapbox_navigation_version"
-  implementation "com.mapbox.navigationcore:ui-components:$mapbox_navigation_version"
+  implementation "com.mapbox.navigationcore:android-ndk27:$mapbox_navigation_version"
+  implementation "com.mapbox.navigationcore:ui-components-ndk27:$mapbox_navigation_version"
   // Location provider for mapbox
   implementation("com.google.android.gms:play-services-location:21.2.0")
   implementation 'androidx.cardview:cardview:1.0.0'
