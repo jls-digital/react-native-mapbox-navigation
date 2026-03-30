@@ -54,6 +54,14 @@ class MapboxNavigationView: UIView {
     fatalError("init(coder:) has not been implemented")
   }
 
+  override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    if let navView = navViewController?.view,
+       let hitView = navView.hitTest(convert(point, to: navView), with: event) {
+      return hitView
+    }
+    return super.hitTest(point, with: event)
+  }
+
   override func layoutSubviews() {
     super.layoutSubviews()
 
