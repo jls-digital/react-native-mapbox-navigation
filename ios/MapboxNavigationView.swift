@@ -59,9 +59,6 @@ class MapboxNavigationView: UIView {
       return super.hitTest(point, with: event)
     }
     let convertedPoint = convert(point, to: navView)
-    // Always let the NavigationViewController's view handle hit testing
-    // when the touch is within its bounds, bypassing React Native's
-    // gesture system which can swallow touches meant for native UIKit controls.
     if navView.point(inside: convertedPoint, with: event) {
       return navView.hitTest(convertedPoint, with: event) ?? navView
     }
