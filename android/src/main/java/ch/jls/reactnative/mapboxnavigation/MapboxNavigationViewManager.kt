@@ -93,6 +93,7 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
       .beginTransaction()
       .remove(this.mapboxNavigationFragment!!)
       .commit()
+    this.mapboxNavigationFragment = null
     Log.d("MapboxNavigation", "Fragment removed")
   }
 
