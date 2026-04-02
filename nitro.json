@@ -1,0 +1,23 @@
+{
+  "cxxNamespace": ["jlsdigital_reactnativemapboxnavigation"],
+  "ios": {
+    "iosModuleName": "ReactNativeMapboxNavigation"
+  },
+  "android": {
+    "androidNamespace": ["jlsdigital","reactnativemapboxnavigation"],
+    "androidCxxLibName": "jlsdigital_reactnativemapboxnavigation"
+  },
+  "autolinking": {
+    "ReactNativeMapboxNavigation": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridReactNativeMapboxNavigation"
+      },
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridReactNativeMapboxNavigation"
+      }
+    }
+  },
+  "ignorePaths": ["node_modules"]
+}

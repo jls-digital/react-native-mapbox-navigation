@@ -1,17 +1,18 @@
-def apiProperties = new Properties()
-def apiPropertiesFile = file("./keys.properties")
-
-if (apiPropertiesFile.exists()) {
-  apiProperties.load(new FileInputStream(apiPropertiesFile))
-} else if (System.getenv('MAPBOX_DOWNLOADS_TOKEN') != null) {
-  apiProperties.setProperty('MAPBOX_DOWNLOADS_TOKEN', System.getenv('MAPBOX_DOWNLOADS_TOKEN'))
-} else {
-  throw new GradleException("keys.properties file not found and MAPBOX_DOWNLOADS_TOKEN not set")
-}
-
 buildscript {
-  // Buildscript is evaluated before everything else so we can't use getExtOrDefault
-  def kotlin_version = rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["MapboxNavigation_kotlinVersion"]
+  ext.ReactNativeMapboxNavigation = [
+    kotlinVersion: "2.0.21",
+    minSdkVersion: 24,
+    compileSdkVersion: 36,
+    targetSdkVersion: 36
+  ]
+
+  ext.getExtOrDefault = { prop ->
+    if (rootProject.ext.has(prop)) {
+      return rootProject.ext.get(prop)
+    }
+
+    return ReactNativeMapboxNavigation[prop]
+  }
 
   repositories {
     google()
@@ -19,56 +20,80 @@ buildscript {
   }
 
   dependencies {
-    classpath "com.android.tools.build:gradle:8.13.0"
+    classpath "com.android.tools.build:gradle:8.7.2"
     // noinspection DifferentKotlinGradleVersion
-    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${getExtOrDefault('kotlinVersion')}"
   }
 }
 
-def isNewArchitectureEnabled() {
-  return rootProject.hasProperty("newArchEnabled") && rootProject.getProperty("newArchEnabled") == "true"
+def reactNativeArchitectures() {
+  def value = rootProject.getProperties().get("reactNativeArchitectures")
+  return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
 }
 
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
+apply from: '../nitrogen/generated/android/jlsdigital_reactnativemapboxnavigation+autolinking.gradle'
 
-if (isNewArchitectureEnabled()) {
-  apply plugin: "com.facebook.react"
-}
-
-def getExtOrDefault(name) {
-  return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties["MapboxNavigation_" + name]
-}
-
-def getExtOrIntegerDefault(name) {
-  return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties["MapboxNavigation_" + name]).toInteger()
-}
-
-def supportsNamespace() {
-  def parsed = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize('.')
-  def major = parsed[0].toInteger()
-  def minor = parsed[1].toInteger()
-
-  // Namespace support was added in 7.3.0
-  return (major == 7 && minor >= 3) || major >= 8
-}
+apply plugin: "com.facebook.react"
 
 android {
-  if (supportsNamespace()) {
-    namespace "ch.jls.reactnative.mapboxnavigation"
+  namespace "com.margelo.nitro.jlsdigital.reactnativemapboxnavigation"
 
-    sourceSets {
-      main {
-        manifest.srcFile "src/main/AndroidManifestNew.xml"
+  compileSdkVersion getExtOrDefault("compileSdkVersion")
+
+  defaultConfig {
+    minSdkVersion getExtOrDefault("minSdkVersion")
+    targetSdkVersion getExtOrDefault("targetSdkVersion")
+
+    externalNativeBuild {
+      cmake {
+        cppFlags "-frtti -fexceptions -Wall -fstack-protector-all"
+        arguments "-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+        abiFilters (*reactNativeArchitectures())
+
+        buildTypes {
+          debug {
+            cppFlags "-O1 -g"
+          }
+          release {
+            cppFlags "-O2"
+          }
+        }
       }
     }
   }
 
-  compileSdkVersion getExtOrIntegerDefault("compileSdkVersion")
+  externalNativeBuild {
+    cmake {
+      path "CMakeLists.txt"
+    }
+  }
 
-  defaultConfig {
-    minSdkVersion getExtOrIntegerDefault("minSdkVersion")
-    targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
+  packagingOptions {
+    excludes = [
+      "META-INF",
+      "META-INF/**",
+      "**/libc++_shared.so",
+      "**/libfbjni.so",
+      "**/libjsi.so",
+      "**/libfolly_json.so",
+      "**/libfolly_runtime.so",
+      "**/libglog.so",
+      "**/libhermes.so",
+      "**/libhermes-executor-debug.so",
+      "**/libhermes_executor.so",
+      "**/libreactnative.so",
+      "**/libreactnativejni.so",
+      "**/libturbomodulejsijni.so",
+      "**/libreact_nativemodule_core.so",
+      "**/libjscexecutor.so"
+    ]
+  }
+
+  buildFeatures {
+    buildConfig true
+    prefab true
   }
 
   buildTypes {
@@ -77,56 +102,17 @@ android {
     }
   }
 
-  lintOptions {
+  lint {
     disable "GradleCompatible"
   }
 
   compileOptions {
-    sourceCompatibility JavaVersion.VERSION_17
-    targetCompatibility JavaVersion.VERSION_17
-  }
-
-  buildFeatures {
-    viewBinding true
+    sourceCompatibility JavaVersion.VERSION_1_8
+    targetCompatibility JavaVersion.VERSION_1_8
   }
 }
-
-repositories {
-  mavenCentral()
-  google()
-  maven {
-    url 'https://api.mapbox.com/downloads/v2/releases/maven'
-    authentication {
-      basic(BasicAuthentication)
-    }
-    credentials {
-      // Do not change the username below.
-      // This should always be `mapbox` (not your username).
-      username = "mapbox"
-      // Use the secret token you stored in gradle.properties as the password
-      password = apiProperties.getProperty('MAPBOX_DOWNLOADS_TOKEN')
-    }
-  }
-}
-
-def kotlin_version = getExtOrDefault("kotlinVersion")
-
-def mapbox_navigation_version = "3.17.7"
 
 dependencies {
-  // For < 0.71, this will be from the local maven repo
-  // For > 0.71, this will be replaced by `com.facebook.react:react-android:$version` by react gradle plugin
-  //noinspection GradleDynamicVersion
-  implementation "com.facebook.react:react-android:+"
-  implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-
-  implementation "androidx.constraintlayout:constraintlayout:2.1.4"
-
-  // Mapbox dependencies
-  implementation "com.mapbox.navigationcore:android-ndk27:$mapbox_navigation_version"
-  implementation "com.mapbox.navigationcore:ui-components-ndk27:$mapbox_navigation_version"
-  // Location provider for mapbox
-  implementation("com.google.android.gms:play-services-location:21.2.0")
-  implementation 'androidx.cardview:cardview:1.0.0'
+  implementation "com.facebook.react:react-android"
+  implementation project(":react-native-nitro-modules")
 }
-

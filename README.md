@@ -1,26 +1,41 @@
-# react-native-mapbox-navigation
+# @jls-digital/react-native-mapbox-navigation
 
-asdf
+React Native wrapper around Mapbox Navigation SDKs for turn-by-turn driving navigation.
+
+New Architecture only (Fabric + Codegen) · Mapbox Navigation SDK v3.20.x
+
+## Documentation
+
+- **[Product Spec](docs/spec/SPEC.md)** — requirements, component API, error codes, supported languages
+- **[Architecture](docs/technical/ARCHITECTURE.md)** — native bridge design, SDK integration, repo layout
 
 ## Installation
 
+
 ```sh
-npm install react-native-mapbox-navigation
+npm install @jls-digital/react-native-mapbox-navigation react-native-nitro-modules
+
+> `react-native-nitro-modules` is required as this library relies on [Nitro Modules](https://nitro.margelo.com/).
 ```
+
 
 ## Usage
 
+
 ```js
-import { MapboxNavigationView } from "react-native-mapbox-navigation";
+import { ReactNativeMapboxNavigationView } from "@jls-digital/react-native-mapbox-navigation";
 
 // ...
 
-<MapboxNavigationView color="tomato" />
+<ReactNativeMapboxNavigationView color="tomato" />
 ```
+
 
 ## Contributing
 
-See the [contributing guide](CONTRIBUTING.md) to learn how to contribute to the repository and the development workflow.
+- [Development workflow](CONTRIBUTING.md#development-workflow)
+- [Sending a pull request](CONTRIBUTING.md#sending-a-pull-request)
+- [Code of conduct](CODE_OF_CONDUCT.md)
 
 ## License
 
