@@ -5,7 +5,7 @@ import android.util.Log
 import android.view.Choreographer
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
+
 import androidx.fragment.app.FragmentActivity
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableArray
@@ -16,7 +16,7 @@ import com.mapbox.common.MapboxOptions
 import com.mapbox.geojson.Point
 
 class MapboxNavigationViewManager(private var reactContext: ReactApplicationContext) :
-  ViewGroupManager<FrameLayout>() {
+  ViewGroupManager<NavigationFrameLayout>() {
   private var accessToken: String? = null
   private var mapboxNavigationFragment: MapboxNavigationFragment? = null
 
@@ -76,11 +76,11 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
 
   override fun getName() = REACT_CLASS
 
-  override fun createViewInstance(reactContext: ThemedReactContext): FrameLayout {
-    return FrameLayout(reactContext)
+  override fun createViewInstance(reactContext: ThemedReactContext): NavigationFrameLayout {
+    return NavigationFrameLayout(reactContext)
   }
 
-  override fun onDropViewInstance(view: FrameLayout) {
+  override fun onDropViewInstance(view: NavigationFrameLayout) {
     super.onDropViewInstance(view)
 
     Log.d("MapboxNavigation", "Dropping view instance")
@@ -100,7 +100,7 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
     return mapOf("create" to COMMAND_CREATE)
   }
 
-  override fun receiveCommand(root: FrameLayout, commandId: String?, args: ReadableArray?) {
+  override fun receiveCommand(root: NavigationFrameLayout, commandId: String?, args: ReadableArray?) {
     super.receiveCommand(root, commandId, args)
     val reactNativeViewId = requireNotNull(args).getInt(0)
     Log.d("MapboxNavigation", "Received command: $commandId with viewId: $reactNativeViewId")
@@ -115,7 +115,7 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
    * On new architecture (Fabric), UIManager.dispatchViewManagerCommand doesn't work,
    * so we create the fragment here as a fallback.
    */
-  override fun onAfterUpdateTransaction(view: FrameLayout) {
+  override fun onAfterUpdateTransaction(view: NavigationFrameLayout) {
     super.onAfterUpdateTransaction(view)
     if (this.mapboxNavigationFragment == null) {
       Log.d("MapboxNavigation", "onAfterUpdateTransaction: creating fragment for view ${view.id}")
@@ -123,7 +123,7 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
     }
   }
 
-  private fun createFragmentInView(root: FrameLayout) {
+  private fun createFragmentInView(root: NavigationFrameLayout) {
     setupLayout(root)
 
     val fragment = MapboxNavigationFragment(this.reactContext)
@@ -165,7 +165,7 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
     }
   }
 
-  private fun createFragment(root: FrameLayout, reactNativeViewId: Int) {
+  private fun createFragment(root: NavigationFrameLayout, reactNativeViewId: Int) {
     val parentView = root.findViewById<ViewGroup>(reactNativeViewId)
     setupLayout(parentView)
 
@@ -213,7 +213,7 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
   }
 
   @ReactProp(name = "destination")
-  fun setDestination(view: FrameLayout, destination: ReadableArray?) {
+  fun setDestination(view: NavigationFrameLayout, destination: ReadableArray?) {
     if (destination == null) {
       this.destination = null
       this.mapboxNavigationFragment?.setDestination(null)
@@ -224,7 +224,7 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
   }
 
   @ReactProp(name = "origin")
-  fun setOrigin(view: FrameLayout, origin: ReadableArray?) {
+  fun setOrigin(view: NavigationFrameLayout, origin: ReadableArray?) {
     if (origin == null) {
       this.origin = null
       this.mapboxNavigationFragment?.setOrigin(null)
@@ -235,7 +235,7 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
   }
 
   @ReactProp(name = "waypoints")
-  fun setWaypoints(view: FrameLayout, waypoints: ReadableArray?) {
+  fun setWaypoints(view: NavigationFrameLayout, waypoints: ReadableArray?) {
     this.mapboxNavigationFragment?.resetWaypoints()
     if (waypoints == null) {
       this.waypoints = ArrayList()
@@ -253,19 +253,19 @@ class MapboxNavigationViewManager(private var reactContext: ReactApplicationCont
   }
 
   @ReactProp(name = "shouldSimulateRoute")
-  fun setShouldSimulateRoute(view: FrameLayout, shouldSimulateRoute: Boolean) {
+  fun setShouldSimulateRoute(view: NavigationFrameLayout, shouldSimulateRoute: Boolean) {
     this.shouldSimulateRoute = shouldSimulateRoute
     this.mapboxNavigationFragment?.setShouldSimulateRoute(shouldSimulateRoute)
   }
 
   @ReactProp(name = "shouldShowEndOfRouteFeedback")
-  fun setShowsEndOfRouteFeedback(view: FrameLayout, shouldShowEndOfRouteFeedback: Boolean) {
+  fun setShowsEndOfRouteFeedback(view: NavigationFrameLayout, shouldShowEndOfRouteFeedback: Boolean) {
     this.shouldShowEndOfRouteFeedback = shouldShowEndOfRouteFeedback
     this.mapboxNavigationFragment?.setShouldShowEndOfRouteFeedback(shouldShowEndOfRouteFeedback)
   }
 
   @ReactProp(name = "mute")
-  fun setMute(view: FrameLayout, mute: Boolean) {
+  fun setMute(view: NavigationFrameLayout, mute: Boolean) {
     this.isVoiceInstructionsMuted = mute
     this.mapboxNavigationFragment?.setMute(mute)
   }

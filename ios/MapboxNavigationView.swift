@@ -94,57 +94,57 @@ class MapboxNavigationView: UIView {
     let options = NavigationRouteOptions(waypoints: route, profileIdentifier: .automobile)
 
     Directions.shared.calculate(options) { [weak self] (_, result) in
-      guard let strongSelf = self, let parentVC = strongSelf.parentViewController else {
-        return
+      DispatchQueue.main.async {
+        guard let strongSelf = self, let parentVC = strongSelf.parentViewController else {
+          return
+        }
+
+        switch result {
+          case .failure(let error):
+            strongSelf.onError!(["message": error.localizedDescription])
+          case .success(let response):
+            guard self != nil else {
+              return
+            }
+
+            let navigationService = MapboxNavigationService(
+              routeResponse: response,
+              routeIndex: 0,
+              routeOptions: options,
+              routingProvider: Directions.shared,
+              credentials: NavigationSettings.shared.directions.credentials,
+              locationSource: nil,
+              eventsManagerType: nil,
+              simulating: strongSelf.shouldSimulateRoute ? .always : .never,
+              routerType: nil
+            )
+
+            navigationService.router.reroutesProactively = false
+
+            let navigationOptions = NavigationOptions(navigationService: navigationService)
+            let vc = NavigationViewController(for: response, routeIndex: 0, routeOptions: options, navigationOptions: navigationOptions)
+
+            vc.showsEndOfRouteFeedback = false
+            StatusView.appearance().isHidden = false
+
+            NavigationSettings.shared.voiceMuted = strongSelf.mute;
+
+            vc.delegate = strongSelf
+
+            parentVC.addChild(vc)
+            strongSelf.addSubview(vc.view)
+            vc.view.frame = strongSelf.bounds
+            vc.didMove(toParent: parentVC)
+            strongSelf.navViewController = vc
+
+            if let muteButton = vc.floatingButtons?[1] {
+              muteButton.addTarget(self, action: #selector(self?.toggleMute(sender:)), for: .touchUpInside)
+            }
+        }
+
+        strongSelf.embedding = false
+        strongSelf.embedded = true
       }
-
-      switch result {
-        case .failure(let error):
-          strongSelf.onError!(["message": error.localizedDescription])
-        case .success(let response):
-          guard self != nil else {
-            return
-          }
-
-          let navigationService = MapboxNavigationService(
-            routeResponse: response,
-            routeIndex: 0,
-            routeOptions: options,
-            routingProvider: Directions.shared,
-            credentials: NavigationSettings.shared.directions.credentials,
-            locationSource: nil,
-            eventsManagerType: nil,
-            simulating: strongSelf.shouldSimulateRoute ? .always : .never,
-            routerType: nil
-          )
-
-          navigationService.router.reroutesProactively = false
-
-          let navigationOptions = NavigationOptions(navigationService: navigationService)
-          let vc = NavigationViewController(for: response, routeIndex: 0, routeOptions: options, navigationOptions: navigationOptions)
-
-          vc.showsEndOfRouteFeedback = false
-          StatusView.appearance().isHidden = false
-
-          NavigationSettings.shared.voiceMuted = strongSelf.mute;
-
-          vc.delegate = strongSelf
-
-          parentVC.addChild(vc)
-          strongSelf.addSubview(vc.view)
-          vc.view.frame = strongSelf.bounds
-          vc.didMove(toParent: parentVC)
-          strongSelf.navViewController = vc
-
-          if let muteButton = vc.floatingButtons?[1] {
-            muteButton.addTarget(self, action: #selector(self?.toggleMute(sender:)), for: .touchUpInside)
-          }
-      }
-
-      strongSelf.embedding = false
-      strongSelf.embedded = true
-
-
     }
   }
 
