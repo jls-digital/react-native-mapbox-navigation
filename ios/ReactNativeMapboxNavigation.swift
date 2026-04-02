@@ -1,28 +1,35 @@
-class HybridReactNativeMapboxNavigation : HybridReactNativeMapboxNavigationSpec {
+class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
   // UIView
   var view: UIView = UIView()
 
-  // props
-  var color: String = "#000" {
-    didSet {
-      view.backgroundColor = hexStringToUIColor(hexColor: color)
-    }
+  // ── Props ────────────────────────────────────────────
+
+  var origin: Coordinates = Coordinates(latitude: 0, longitude: 0)
+  var destination: Coordinates = Coordinates(latitude: 0, longitude: 0)
+  var waypoints: [Waypoint]?
+  var language: String?
+  var shouldSimulateRoute: Bool?
+  var mute: Bool?
+  var colorScheme: String?
+
+  // ── Callbacks ────────────────────────────────────────
+
+  var onArrive: ((_ destination: Coordinates) -> Void)?
+  var onError: ((_ code: String, _ message: String) -> Void)?
+  var onCancelNavigation: (() -> Void)?
+  var onMuteChange: ((_ isMuted: Bool) -> Void)?
+  var onRouteProgressChange: ((_ progress: RouteProgress) -> Void)?
+  var onLocationChange: ((_ latitude: Double, _ longitude: Double) -> Void)?
+  var onReroute: (() -> Void)?
+
+  // ── Methods ──────────────────────────────────────────
+
+  func recenterCamera() throws {
+    // TODO: implement with Mapbox SDK
   }
-  
-  func hexStringToUIColor(hexColor: String) -> UIColor {
-    let stringScanner = Scanner(string: hexColor)
 
-    if(hexColor.hasPrefix("#")) {
-      stringScanner.scanLocation = 1
-    }
-    var color: UInt32 = 0
-    stringScanner.scanHexInt32(&color)
-
-    let r = CGFloat(Int(color >> 16) & 0x000000FF)
-    let g = CGFloat(Int(color >> 8) & 0x000000FF)
-    let b = CGFloat(Int(color) & 0x000000FF)
-
-    return UIColor(red: r / 255.0, green: g / 255.0, blue: b / 255.0, alpha: 1)
-  }  
+  func showRouteOverview() throws {
+    // TODO: implement with Mapbox SDK
+  }
 }

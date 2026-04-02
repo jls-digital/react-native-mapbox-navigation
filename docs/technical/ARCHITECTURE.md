@@ -9,9 +9,10 @@
 ## Repo Structure
 
 ```
-src/                        # TypeScript source + Codegen specs
-ios/                        # Swift native module (+ ObjC++ interop)
+src/                        # TypeScript source + Nitro spec
+ios/                        # Swift native module
 android/                    # Kotlin native module
+nitrogen/                   # Auto-generated Nitro bindings (do not edit)
 example/                    # Development / demo app
 docs/
 ├── spec/                   # Product & API specification
@@ -22,9 +23,9 @@ docs/
 
 ## Native Bridge
 
-- **Bridge layer:** Fabric Codegen (`codegenNativeComponent` + `codegenNativeCommands`)
-- **iOS:** Swift view wrapping `NavigationViewController`, exposed via ObjC++ Fabric view manager
-- **Android:** Kotlin view wrapping Mapbox `NavigationView`, exposed via Fabric `SimpleViewManager`
+- **Bridge layer:** Nitro Modules (`react-native-nitro-modules`) — `.nitro.ts` spec defines the typed bridge, `nitrogen` CLI generates native bindings
+- **iOS:** Swift view implementing `HybridReactNativeMapboxNavigationSpec`, wrapping `NavigationViewController`
+- **Android:** Kotlin view implementing `HybridReactNativeMapboxNavigationSpec`, wrapping Mapbox `NavigationView`
 
 ## SDK Integration
 
