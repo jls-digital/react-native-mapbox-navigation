@@ -48,6 +48,7 @@ class MapboxNavigationView: UIView {
     self.embedded = false
     self.embedding = false
     super.init(frame: frame)
+    clipsToBounds = false
   }
 
   required init?(coder aDecoder: NSCoder) {
@@ -58,11 +59,27 @@ class MapboxNavigationView: UIView {
     guard let navView = navViewController?.view else {
       return super.hitTest(point, with: event)
     }
+
+    let result = super.hitTest(point, with: event)
+    if let result = result, result !== self {
+      return result
+    }
+
     let convertedPoint = convert(point, to: navView)
     if navView.point(inside: convertedPoint, with: event) {
       return navView.hitTest(convertedPoint, with: event) ?? navView
     }
-    return super.hitTest(point, with: event)
+    return nil
+  }
+
+  override func reactSubviews() -> [UIView]! {
+    return []
+  }
+
+  override func insertReactSubview(_ subview: UIView!, at atIndex: Int) {
+  }
+
+  override func removeReactSubview(_ subview: UIView!) {
   }
 
   override func layoutSubviews() {
@@ -77,8 +94,26 @@ class MapboxNavigationView: UIView {
 
   override func removeFromSuperview() {
     super.removeFromSuperview()
-    // cleanup and teardown any existing resources
-    self.navViewController?.removeFromParent()
+    if let vc = navViewController {
+      vc.willMove(toParent: nil)
+      vc.view.removeFromSuperview()
+      vc.removeFromParent()
+      navViewController = nil
+    }
+    embedded = false
+    embedding = false
+  }
+
+  /// Fix UILayoutContainerView having isUserInteractionEnabled=false,
+  /// which blocks all touches from reaching this view.
+  private func fixParentInteraction() {
+    var view: UIView? = self.superview
+    while let v = view {
+      if !v.isUserInteractionEnabled {
+        v.isUserInteractionEnabled = true
+      }
+      view = v.superview
+    }
   }
 
   @objc private func toggleMute(sender: UIButton) {
@@ -87,7 +122,7 @@ class MapboxNavigationView: UIView {
 
   private func embed() {
     guard origin.count == 2 && destination.count == 2 else { return }
-    
+
     embedding = true
 
     let route = createRoute()
@@ -134,8 +169,14 @@ class MapboxNavigationView: UIView {
             parentVC.addChild(vc)
             strongSelf.addSubview(vc.view)
             vc.view.frame = strongSelf.bounds
+            vc.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             vc.didMove(toParent: parentVC)
             strongSelf.navViewController = vc
+            strongSelf.fixParentInteraction()
+            // Re-apply after push transition animation settles
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+              self?.fixParentInteraction()
+            }
 
             if let muteButton = vc.floatingButtons?[1] {
               muteButton.addTarget(self, action: #selector(self?.toggleMute(sender:)), for: .touchUpInside)
@@ -148,12 +189,6 @@ class MapboxNavigationView: UIView {
     }
   }
 
-  // MARK: Helper Functions
-
-  // MARK: - Route Creation
-  /**
-   * Creates a route out of the origin, destination and potential waypoints which lay between them
-   */
   private func createRoute() -> Array<Waypoint> {
     let originWaypoint = createWaypoint(from: origin)
     let destinationWaypoint = createWaypoint(from: destination)
@@ -168,10 +203,6 @@ class MapboxNavigationView: UIView {
     return [originWaypoint] + additionalWaypoints + [destinationWaypoint]
   }
 
-  /**
-   * Creates a waypoint out of an array of coordinates.
-   * The coordinates are expected to be in the format [longitude, latitude]
-   */
   private func createWaypoint(from coordinate: NSArray) -> Waypoint {
     Waypoint(coordinate: CLLocationCoordinate2D(latitude: coordinate[1] as! CLLocationDegrees, longitude: coordinate[0] as! CLLocationDegrees))
   }
