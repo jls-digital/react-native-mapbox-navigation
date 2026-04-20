@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
+    "@jls-digital/react-native-mapbox-navigation": "workspace:*",
     "@react-navigation/native": "^7.2.2",
     "@react-navigation/native-stack": "^7.14.10",
     "expo": "~54.0.33",
