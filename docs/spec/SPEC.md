@@ -93,6 +93,16 @@ Support light and dark map/navigation styles. Accept a `colorScheme` prop:
 - `'dark'` — force nighttime navigation style
 - `'auto'` (default) — let the Mapbox SDK switch automatically based on sun position and tunnel detection
 
+### B14 — Typography Customization
+
+Allow consumers to override the fonts used across the navigation UI (maneuver banner, trip progress bar, button labels, speed limit indicator). Accept a `fontFamily` prop that applies to all text rendered by the navigation UI.
+
+- Value: a string that resolves to a font installed in the host app (iOS: PostScript name registered via `UIAppFonts`; Android: font family name bundled via `res/font` or `assets/fonts`).
+- When omitted, the Mapbox SDK's default typography is used.
+- The `fontFamily` setting is orthogonal to `colorScheme` — both may be combined.
+
+Out of scope for v3.0: per-element font overrides, per-weight/per-style overrides, dynamic type size. Revisit if consumer demand emerges.
+
 ---
 
 ## 3. UI / UX Requirements
@@ -289,6 +299,7 @@ interface MapboxNavigationProps extends ViewProps {
   shouldSimulateRoute?: boolean;                   // default: false
   mute?: boolean;                                  // default: false
   colorScheme?: 'light' | 'dark' | 'auto';        // default: 'auto'
+  fontFamily?: string;                             // default: SDK default typography
 
   // ── Events ─────────────────────────────────────────────
   onArrive?: (event: ArriveEvent) => void;

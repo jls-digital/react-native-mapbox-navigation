@@ -22,6 +22,7 @@ docs/
 
 - **[Product Spec](docs/spec/SPEC.md)** — requirements, component API, error codes, supported languages
 - **[Architecture](docs/technical/ARCHITECTURE.md)** — native bridge design, SDK integration, repo layout
+- **[Mapbox SDK Research](docs/technical/MAPBOX_SDK_RESEARCH.md)** — per-requirement iOS / Android API map with code snippets, doc links, and open questions
 - **[Test Cases](docs/test-cases/TEST_CASES.md)** — Maestro E2E test case descriptions
 
 ## Key Commands

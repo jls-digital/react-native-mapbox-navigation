@@ -35,3 +35,5 @@ docs/
 | Android | `com.mapbox.navigationcore:android:3.20.x` | Maven / Gradle |
 
 See [SPEC.md](../spec/SPEC.md) §6 and §9 for the full architecture diagram and SDK details.
+
+See [MAPBOX_SDK_RESEARCH.md](./MAPBOX_SDK_RESEARCH.md) for the detailed API mapping from each SPEC requirement (B1–B14) to concrete iOS / Android SDK calls, with code snippets, doc links, and open questions to resolve during implementation.
