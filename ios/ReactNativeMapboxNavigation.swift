@@ -309,6 +309,22 @@ extension HybridReactNativeMapboxNavigation: NavigationViewControllerDelegate {
   @MainActor
   func navigationViewController(
     _ navigationViewController: NavigationViewController,
+    didUpdate progress: MapboxNavigationCore.RouteProgress,
+    with location: CLLocation,
+    rawLocation: CLLocation
+  ) {
+    onRouteProgressChange?(RouteProgress(
+      distanceTraveled: progress.distanceTraveled,
+      distanceRemaining: progress.distanceRemaining,
+      durationRemaining: progress.durationRemaining,
+      fractionTraveled: progress.fractionTraveled
+    ))
+    onLocationChange?(location.coordinate.latitude, location.coordinate.longitude)
+  }
+
+  @MainActor
+  func navigationViewController(
+    _ navigationViewController: NavigationViewController,
     didArriveAt waypoint: MapboxDirections.Waypoint
   ) {
     let coord = waypoint.coordinate

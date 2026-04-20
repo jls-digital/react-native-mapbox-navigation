@@ -11,6 +11,15 @@ export const CITIES: Record<string, Coordinates> = {
   geneva: { latitude: 46.2044, longitude: 6.1432 },
 };
 
+// ~500m within central Zurich — completes in ~30s with the default
+// iOS simulator speed (no public speed multiplier on iOS v3).
+// Intended for Maestro smoke tests.
+const ZURICH_HB: Coordinates = { latitude: 47.3784, longitude: 8.5402 };
+const ZURICH_BAHNHOFSTRASSE: Coordinates = {
+  latitude: 47.3726,
+  longitude: 8.5388,
+};
+
 export interface RoutePreset {
   label: string;
   origin: Coordinates;
@@ -19,6 +28,11 @@ export interface RoutePreset {
 }
 
 export const ROUTE_PRESETS: RoutePreset[] = [
+  {
+    label: 'Zurich HB → Bahnhofstrasse (short, for tests)',
+    origin: ZURICH_HB,
+    destination: ZURICH_BAHNHOFSTRASSE,
+  },
   {
     label: 'Zurich → Bern',
     origin: CITIES.zurich!,

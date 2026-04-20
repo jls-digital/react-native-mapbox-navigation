@@ -1,0 +1,28 @@
+appId: jlsdigital.reactnativemapboxnavigation.example
+name: Smoke — happy path (simulated short route)
+tags:
+  - smoke
+---
+# Launch → pick the short Zurich preset (simulated) → start navigation →
+# wait for the native nav view to mount → wait for the arrival alert.
+# Requires `MAPBOX_ACCESS_TOKEN` to be set in `example/.env` so the
+# Expo config plugin injects it before the app is built.
+- launchApp
+- tapOn:
+    id: 'home.preset.0'
+# Simulation is on by default; leaving the toggle alone.
+- tapOn:
+    id: 'home.startNavigation'
+# Native nav view should mount within ~5s of route fetch.
+- assertVisible:
+    id: 'navigation.mapboxNavigation'
+    timeout: 15000
+# The debug console mirrors onRouteProgressChange / onLocationChange —
+# wait for the first update to confirm observers are wired.
+- assertVisible:
+    text: 'Progress:'
+    timeout: 15000
+# Simulator drives along the ~500m route in well under 60s.
+- assertVisible:
+    text: 'Arrived'
+    timeout: 90000
