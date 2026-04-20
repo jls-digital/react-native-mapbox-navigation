@@ -1,3 +1,7 @@
+import MapboxNavigationCore
+import MapboxNavigationUIKit
+import UIKit
+
 class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
   // UIView
