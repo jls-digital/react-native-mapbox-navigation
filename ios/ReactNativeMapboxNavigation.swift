@@ -337,7 +337,7 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
       mapboxNavigation: provider.mapboxNavigation,
       voiceController: provider.routeVoiceController,
       eventsManager: provider.eventsManager(),
-      styles: [StandardDayStyle(), StandardNightStyle()]
+      styles: [FontDayStyle(fontFamily: fontFamily), FontNightStyle(fontFamily: fontFamily)]
     )
 
     let navVC = NavigationViewController(
@@ -454,6 +454,57 @@ extension HybridReactNativeMapboxNavigation: NavigationViewControllerDelegate {
     return abs(coord.latitude - destination.latitude) < epsilon &&
            abs(coord.longitude - destination.longitude) < epsilon
   }
+}
+
+// ── Font-aware styles ─────────────────────────────────
+// Subclass the standard styles to set scoped UIAppearance font
+// overrides. `whenContainedInInstancesOf: [NavigationViewController.self]`
+// confines the override to our navigation view — the host app's other
+// UI is untouched. See SPEC B14.
+
+final class FontDayStyle: StandardDayStyle {
+  private var customFontFamily: String?
+
+  convenience init(fontFamily: String?) {
+    self.init()
+    self.customFontFamily = fontFamily
+  }
+
+  required init() {
+    super.init()
+  }
+
+  override func apply() {
+    super.apply()
+    applyFontOverride(customFontFamily)
+  }
+}
+
+final class FontNightStyle: StandardNightStyle {
+  private var customFontFamily: String?
+
+  convenience init(fontFamily: String?) {
+    self.init()
+    self.customFontFamily = fontFamily
+  }
+
+  required init() {
+    super.init()
+  }
+
+  override func apply() {
+    super.apply()
+    applyFontOverride(customFontFamily)
+  }
+}
+
+private func applyFontOverride(_ fontFamily: String?) {
+  guard let name = fontFamily,
+        !name.isEmpty,
+        let base = UIFont(name: name, size: UIFont.systemFontSize)
+  else { return }
+  StylableLabel.appearance(whenContainedInInstancesOf: [NavigationViewController.self])
+    .normalFont = base
 }
 
 // ── Helpers ────────────────────────────────────────────
