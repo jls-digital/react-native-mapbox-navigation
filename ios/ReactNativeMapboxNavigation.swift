@@ -82,7 +82,13 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     }
   }
   var colorScheme: String? {
-    didSet { NSLog("\(logTag) colorScheme=\(colorScheme ?? "<nil>")") }
+    didSet {
+      NSLog("\(logTag) colorScheme=\(colorScheme ?? "<nil>")")
+      guard colorScheme != oldValue else { return }
+      Task { @MainActor [weak self] in
+        self?.applyColorScheme()
+      }
+    }
   }
   var fontFamily: String? {
     didSet { NSLog("\(logTag) fontFamily=\(fontFamily ?? "<nil>")") }
@@ -161,6 +167,20 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     guard let provider = mapboxNavigationProvider else { return }
     provider.routeVoiceController.speechSynthesizer.muted = newValue
     onMuteChange?(newValue)
+  }
+
+  @MainActor
+  private func applyColorScheme() {
+    guard let navVC = navigationViewController else { return }
+    switch colorScheme {
+    case "light":
+      navVC.styleManager.applyStyle(type: .day)
+    case "dark":
+      navVC.styleManager.applyStyle(type: .night)
+    default:
+      // "auto" / nil — StyleManager switches on sun position.
+      break
+    }
   }
 
   nonisolated private func scheduleSessionStart() {
@@ -281,6 +301,7 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     ])
     navVC.didMove(toParent: carrier)
     NSLog("\(logTag) NavigationViewController embedded")
+    applyColorScheme()
   }
 
   @MainActor
