@@ -34,6 +34,6 @@ Pod::Spec.new do |s|
   spm_dependency(s,
     url: 'https://github.com/mapbox/mapbox-navigation-ios',
     requirement: { kind: 'upToNextMinorVersion', minimumVersion: '3.20.0' },
-    products: ['MapboxNavigationCore', 'MapboxNavigationUIKit']
+    products: ['MapboxNavigationCore', 'MapboxNavigationUIKit', 'MapboxDirections']
   )
 end
