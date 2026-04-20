@@ -240,6 +240,7 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
       navigationRoutes: routes,
       navigationOptions: navigationOptions
     )
+    navVC.delegate = self
     navigationViewController = navVC
 
     embedCarrierIfNeeded()
@@ -287,6 +288,41 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
       responder = r.next
     }
     return nil
+  }
+}
+
+// ── NavigationViewControllerDelegate ──────────────────
+
+extension HybridReactNativeMapboxNavigation: NavigationViewControllerDelegate {
+
+  @MainActor
+  func navigationViewControllerDidDismiss(
+    _ navigationViewController: NavigationViewController,
+    byCanceling canceled: Bool
+  ) {
+    NSLog("\(logTag) navigationViewControllerDidDismiss canceled=\(canceled)")
+    if canceled {
+      onCancelNavigation?()
+    }
+  }
+
+  @MainActor
+  func navigationViewController(
+    _ navigationViewController: NavigationViewController,
+    didArriveAt waypoint: MapboxDirections.Waypoint
+  ) {
+    let coord = waypoint.coordinate
+    let isFinal = isFinalDestination(coord)
+    NSLog("\(logTag) didArriveAt \(coord.latitude),\(coord.longitude) final=\(isFinal)")
+    if isFinal {
+      onArrive?(Coordinates(latitude: coord.latitude, longitude: coord.longitude))
+    }
+  }
+
+  private func isFinalDestination(_ coord: CLLocationCoordinate2D) -> Bool {
+    let epsilon = 1e-6
+    return abs(coord.latitude - destination.latitude) < epsilon &&
+           abs(coord.longitude - destination.longitude) < epsilon
   }
 }
 
