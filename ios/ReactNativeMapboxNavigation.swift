@@ -14,8 +14,8 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
   // ── Mapbox session ───────────────────────────────────
   // Nitro's base init() is non-isolated, so we can't override with a
-  // MainActor-isolated init. The Mapbox provider is created lazily on
-  // first prop-driven schedule tick, which runs via `MainActor.run`.
+  // MainActor-isolated init. The provider and the embedded nav VC are
+  // created lazily on the first `afterUpdate()` tick.
 
   private var mapboxNavigationProvider: MapboxNavigationProvider?
   private var mapboxNavigation: MapboxNavigation?
@@ -24,43 +24,44 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   private var hasScheduledSessionStart = false
   private var routeRequestTask: Task<Void, Never>?
 
+  private let carrier = UIViewController()
+  private var navigationViewController: NavigationViewController?
+
   deinit {
     routeRequestTask?.cancel()
-    guard let nav = mapboxNavigation else { return }
+    // Capture MainActor state before self is gone, then tear down on main.
+    let nav = mapboxNavigation
+    let carrierVC = carrier
+    let navVC = navigationViewController
     Task { @MainActor in
-      nav.tripSession().setToIdle()
+      navVC?.willMove(toParent: nil)
+      navVC?.view.removeFromSuperview()
+      navVC?.removeFromParent()
+      carrierVC.willMove(toParent: nil)
+      carrierVC.view.removeFromSuperview()
+      carrierVC.removeFromParent()
+      nav?.tripSession().setToIdle()
     }
   }
 
-  @MainActor
-  private func ensureMapboxNavigation() -> MapboxNavigation {
-    if let existing = mapboxNavigation { return existing }
-    let coreConfig = CoreConfig()
-    let provider = MapboxNavigationProvider(coreConfig: coreConfig)
-    mapboxNavigationProvider = provider
-    mapboxNavigation = provider.mapboxNavigation
-    return provider.mapboxNavigation
+  // ── Nitro view lifecycle ─────────────────────────────
+
+  func beforeUpdate() {}
+
+  func afterUpdate() {
+    scheduleSessionStart()
   }
 
   // ── Props ────────────────────────────────────────────
 
   var origin: Coordinates = Coordinates(latitude: 0, longitude: 0) {
-    didSet {
-      NSLog("\(logTag) origin=\(origin.latitude),\(origin.longitude)")
-      scheduleSessionStart()
-    }
+    didSet { NSLog("\(logTag) origin=\(origin.latitude),\(origin.longitude)") }
   }
   var destination: Coordinates = Coordinates(latitude: 0, longitude: 0) {
-    didSet {
-      NSLog("\(logTag) destination=\(destination.latitude),\(destination.longitude)")
-      scheduleSessionStart()
-    }
+    didSet { NSLog("\(logTag) destination=\(destination.latitude),\(destination.longitude)") }
   }
   var waypoints: [Waypoint]? {
-    didSet {
-      NSLog("\(logTag) waypoints count=\(waypoints?.count ?? 0)")
-      scheduleSessionStart()
-    }
+    didSet { NSLog("\(logTag) waypoints count=\(waypoints?.count ?? 0)") }
   }
   var language: String? {
     didSet { NSLog("\(logTag) language=\(language ?? "<nil>")") }
@@ -115,14 +116,32 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     NSLog("\(logTag) showRouteOverview() invoked")
   }
 
-  // ── Route calculation ────────────────────────────────
+  // ── Setup ────────────────────────────────────────────
+
+  @MainActor
+  private func ensureMapboxNavigation() -> MapboxNavigation {
+    if let existing = mapboxNavigation { return existing }
+    let locationSource: LocationSource
+    if shouldSimulateRoute == true {
+      let initial = CLLocation(
+        latitude: origin.latitude,
+        longitude: origin.longitude
+      )
+      locationSource = .simulation(initialLocation: initial)
+    } else {
+      locationSource = .live
+    }
+    let coreConfig = CoreConfig(locationSource: locationSource)
+    let provider = MapboxNavigationProvider(coreConfig: coreConfig)
+    mapboxNavigationProvider = provider
+    mapboxNavigation = provider.mapboxNavigation
+    return provider.mapboxNavigation
+  }
 
   nonisolated private func scheduleSessionStart() {
     Task { @MainActor [weak self] in
       guard let self, !self.hasScheduledSessionStart else { return }
       self.hasScheduledSessionStart = true
-      // Let the rest of the prop setters run before we actually kick off.
-      await Task.yield()
       self.startSessionIfReady()
     }
   }
@@ -142,8 +161,9 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
       await MainActor.run {
         switch result {
         case .success(let routes):
-          self?.currentRoutes = routes
           NSLog("\(logTag) routes fetched — \(routes.alternativeRoutes.count) alternatives")
+          self?.currentRoutes = routes
+          self?.presentNavigationUI(routes: routes)
         case .failure(let error):
           self?.emitRouteError(error)
         }
@@ -193,6 +213,80 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     }
     NSLog("\(logTag) route error code=\(code) message=\(error.localizedDescription)")
     onError?(code, error.localizedDescription)
+  }
+
+  // ── Navigation UI mount ──────────────────────────────
+
+  @MainActor
+  private func presentNavigationUI(routes: NavigationRoutes) {
+    guard navigationViewController == nil,
+          let provider = mapboxNavigationProvider else { return }
+
+    // NOTE: simulation is wired at the `MapboxNavigationProvider` level via
+    // `CoreConfig.locationSource = .simulation(...)` (see `ensureMapboxNavigation`).
+    // `simulationSpeedMultiplier` is a JS API-parity placeholder — iOS v3 does
+    // not expose a public speed multiplier for the built-in simulator. Android
+    // uses `ReplayRouteOptions.maxSpeedMps`; we'll bridge an iOS equivalent
+    // once the SDK exposes one.
+
+    let navigationOptions = NavigationOptions(
+      mapboxNavigation: provider.mapboxNavigation,
+      voiceController: provider.routeVoiceController,
+      eventsManager: provider.eventsManager(),
+      styles: [StandardDayStyle(), StandardNightStyle()]
+    )
+
+    let navVC = NavigationViewController(
+      navigationRoutes: routes,
+      navigationOptions: navigationOptions
+    )
+    navigationViewController = navVC
+
+    embedCarrierIfNeeded()
+
+    carrier.addChild(navVC)
+    navVC.view.translatesAutoresizingMaskIntoConstraints = false
+    carrier.view.addSubview(navVC.view)
+    NSLayoutConstraint.activate([
+      navVC.view.topAnchor.constraint(equalTo: carrier.view.topAnchor),
+      navVC.view.bottomAnchor.constraint(equalTo: carrier.view.bottomAnchor),
+      navVC.view.leadingAnchor.constraint(equalTo: carrier.view.leadingAnchor),
+      navVC.view.trailingAnchor.constraint(equalTo: carrier.view.trailingAnchor),
+    ])
+    navVC.didMove(toParent: carrier)
+    NSLog("\(logTag) NavigationViewController embedded")
+  }
+
+  @MainActor
+  private func embedCarrierIfNeeded() {
+    guard carrier.view.superview == nil else { return }
+    carrier.view.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(carrier.view)
+    NSLayoutConstraint.activate([
+      carrier.view.topAnchor.constraint(equalTo: view.topAnchor),
+      carrier.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+      carrier.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+      carrier.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+    ])
+    // Attach carrier to the nearest UIViewController in the responder
+    // chain so the NavigationViewController inherits a valid parent
+    // (safe areas, status bar, presentation context).
+    if carrier.parent == nil, let host = findHostViewController() {
+      host.addChild(carrier)
+      carrier.didMove(toParent: host)
+    }
+  }
+
+  @MainActor
+  private func findHostViewController() -> UIViewController? {
+    var responder: UIResponder? = view.next
+    while let r = responder {
+      if let vc = r as? UIViewController, vc !== carrier {
+        return vc
+      }
+      responder = r.next
+    }
+    return nil
   }
 }
 
