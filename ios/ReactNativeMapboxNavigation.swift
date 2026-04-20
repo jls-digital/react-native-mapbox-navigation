@@ -325,6 +325,15 @@ extension HybridReactNativeMapboxNavigation: NavigationViewControllerDelegate {
   @MainActor
   func navigationViewController(
     _ navigationViewController: NavigationViewController,
+    didRerouteAlong route: Route
+  ) {
+    NSLog("\(logTag) didRerouteAlong route distance=\(route.distance)m")
+    onReroute?()
+  }
+
+  @MainActor
+  func navigationViewController(
+    _ navigationViewController: NavigationViewController,
     didArriveAt waypoint: MapboxDirections.Waypoint
   ) {
     let coord = waypoint.coordinate
