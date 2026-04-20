@@ -10,8 +10,10 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   var waypoints: [Waypoint]?
   var language: String?
   var shouldSimulateRoute: Bool?
+  var simulationSpeedMultiplier: Double?
   var mute: Bool?
   var colorScheme: String?
+  var fontFamily: String?
 
   // ── Callbacks ────────────────────────────────────────
 

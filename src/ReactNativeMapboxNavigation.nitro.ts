@@ -34,8 +34,10 @@ export interface ReactNativeMapboxNavigationProps extends HybridViewProps {
   // Configuration
   language?: string;
   shouldSimulateRoute?: boolean;
+  simulationSpeedMultiplier?: number;
   mute?: boolean;
   colorScheme?: string;
+  fontFamily?: string;
 
   // Events
   onArrive?: (destination: Coordinates) => void;

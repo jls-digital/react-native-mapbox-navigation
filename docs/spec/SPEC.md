@@ -47,6 +47,12 @@ Provide an on-screen button to exit navigation. Emit a cancel event to JS when t
 
 Simulate driving along the calculated route without requiring real GPS movement. Controlled via a `shouldSimulateRoute` prop. Intended for development and demo purposes.
 
+Accepts an optional `simulationSpeedMultiplier` prop (number, default `1`) that scales the simulated vehicle's speed — useful for end-to-end tests where waiting for a real-time drive is impractical. Values > 1 advance the simulation faster than real time; values < 1 slow it down. Has no effect when `shouldSimulateRoute` is false.
+
+Both `shouldSimulateRoute` and `simulationSpeedMultiplier` are read at mount time only — runtime changes require remounting the component.
+
+Platform note: Android exposes a first-class speed control (`ReplayRouteOptions.maxSpeedMps`). iOS v3 does not expose a public speed multiplier, so the iOS implementation approximates by adjusting the replay update frequency; fidelity may differ. If iOS exposes a first-class API in a future minor, migrate.
+
 ### B8 — Route Progress Tracking
 
 Continuously emit route progress data during active navigation:
@@ -335,6 +341,7 @@ interface MapboxNavigationProps extends ViewProps {
   // ── Configuration ──────────────────────────────────────
   language?: MapboxLanguage;                       // default: 'en'
   shouldSimulateRoute?: boolean;                   // default: false
+  simulationSpeedMultiplier?: number;              // default: 1 (only honored when shouldSimulateRoute)
   mute?: boolean;                                  // default: false
   colorScheme?: 'light' | 'dark' | 'auto';        // default: 'auto'
   fontFamily?: string;                             // default: SDK default typography

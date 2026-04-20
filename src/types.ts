@@ -102,8 +102,10 @@ export interface MapboxNavigationProps extends ViewProps {
   // Configuration
   language?: MapboxLanguage;
   shouldSimulateRoute?: boolean;
+  simulationSpeedMultiplier?: number;
   mute?: boolean;
   colorScheme?: 'light' | 'dark' | 'auto';
+  fontFamily?: string;
 
   // Events
   onArrive?: (event: ArriveEvent) => void;

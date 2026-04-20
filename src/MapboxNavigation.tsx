@@ -22,8 +22,10 @@ export const MapboxNavigation = forwardRef<
     waypoints,
     language,
     shouldSimulateRoute,
+    simulationSpeedMultiplier,
     mute,
     colorScheme,
+    fontFamily,
     onArrive,
     onError,
     onCancelNavigation,
@@ -124,8 +126,10 @@ export const MapboxNavigation = forwardRef<
       waypoints={waypoints}
       language={language}
       shouldSimulateRoute={shouldSimulateRoute}
+      simulationSpeedMultiplier={simulationSpeedMultiplier}
       mute={mute}
       colorScheme={colorScheme}
+      fontFamily={fontFamily}
       onArrive={wrappedOnArrive}
       onError={wrappedOnError}
       onCancelNavigation={wrappedOnCancelNavigation}

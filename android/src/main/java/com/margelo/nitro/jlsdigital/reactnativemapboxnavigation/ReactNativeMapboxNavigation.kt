@@ -16,8 +16,10 @@ class HybridReactNativeMapboxNavigation(val context: ThemedReactContext) : Hybri
   override var waypoints: Array<Waypoint>? = null
   override var language: String? = null
   override var shouldSimulateRoute: Boolean? = null
+  override var simulationSpeedMultiplier: Double? = null
   override var mute: Boolean? = null
   override var colorScheme: String? = null
+  override var fontFamily: String? = null
 
   // ── Callbacks ────────────────────────────────────────
 
