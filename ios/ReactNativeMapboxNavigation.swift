@@ -201,6 +201,8 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
   @MainActor
   private func startSessionIfReady() {
+    guard ensureCoordinatesValid() else { return }
+    guard ensureLocationAvailable() else { return }
     guard ensureLocationPermission() else { return }
     let nav = ensureMapboxNavigation()
     let waypointList = buildWaypoints()
@@ -232,7 +234,7 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
       NSLog("\(logTag) location permission not granted")
       onError?(
         "GPS_PERMISSION_DENIED",
-        "Location permission not granted. The example app needs location permission to navigate."
+        "Location permission not granted. The app needs location permission to navigate."
       )
       return false
     case .authorizedAlways, .authorizedWhenInUse:
@@ -240,6 +242,43 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     @unknown default:
       return false
     }
+  }
+
+  @MainActor
+  private func ensureLocationAvailable() -> Bool {
+    if CLLocationManager.locationServicesEnabled() {
+      return true
+    }
+    NSLog("\(logTag) location services disabled")
+    onError?(
+      "GPS_UNAVAILABLE",
+      "Location services are disabled on this device. Enable Location Services in Settings."
+    )
+    return false
+  }
+
+  @MainActor
+  private func ensureCoordinatesValid() -> Bool {
+    func isValid(_ c: Coordinates) -> Bool {
+      c.latitude >= -90 && c.latitude <= 90 &&
+      c.longitude >= -180 && c.longitude <= 180 &&
+      !(c.latitude == 0 && c.longitude == 0)
+    }
+    if !isValid(origin) || !isValid(destination) {
+      onError?(
+        "INVALID_COORDINATES",
+        "Origin or destination is outside the valid lat/lon range or is the default (0, 0)."
+      )
+      return false
+    }
+    for (i, wp) in (waypoints ?? []).enumerated() where !isValid(wp.coordinate) {
+      onError?(
+        "INVALID_COORDINATES",
+        "Waypoint #\(i + 1) coordinate is invalid."
+      )
+      return false
+    }
+    return true
   }
 
   private func buildWaypoints() -> [MapboxDirections.Waypoint] {
@@ -258,14 +297,26 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   }
 
   private func emitRouteError(_ error: Error) {
+    let message = error.localizedDescription
     let code: String
     if error is URLError {
       code = "NETWORK_ERROR"
+    } else if looksLikeAuthFailure(error, message: message) {
+      code = "SDK_INIT_FAILED"
     } else {
       code = "ROUTE_CALCULATION_FAILED"
     }
-    NSLog("\(logTag) route error code=\(code) message=\(error.localizedDescription)")
-    onError?(code, error.localizedDescription)
+    NSLog("\(logTag) route error code=\(code) message=\(message)")
+    onError?(code, message)
+  }
+
+  private func looksLikeAuthFailure(_ error: Error, message: String) -> Bool {
+    let nsError = error as NSError
+    if nsError.code == 401 || nsError.code == 403 { return true }
+    let lowered = message.lowercased()
+    return lowered.contains("unauthorized") ||
+           lowered.contains("access token") ||
+           lowered.contains("401") || lowered.contains("403")
   }
 
   // ── Navigation UI mount ──────────────────────────────
