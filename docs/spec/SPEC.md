@@ -103,6 +103,37 @@ Allow consumers to override the fonts used across the navigation UI (maneuver ba
 
 Out of scope for v3.0: per-element font overrides, per-weight/per-style overrides, dynamic type size. Revisit if consumer demand emerges.
 
+### B15 — Expo Config Plugin
+
+Ship an Expo config plugin as part of the library so Expo (CNG) consumers can configure the runtime Mapbox access token declaratively, without hand-editing generated native files.
+
+**Consumer usage:**
+
+```json
+{
+  "expo": {
+    "plugins": [
+      ["@jls-digital/react-native-mapbox-navigation", { "accessToken": "pk.your_token" }]
+    ]
+  }
+}
+```
+
+**Behavior:**
+
+- Accept `accessToken: string` in the plugin config (optional).
+- When the config value is absent, fall back to `process.env.MAPBOX_ACCESS_TOKEN` at prebuild time.
+- When neither source provides a token, fail the prebuild with a clear error message pointing to the README.
+- During `expo prebuild`, inject the token into:
+  - iOS `Info.plist` as `MBXAccessToken`
+  - Android string resource `mapbox_access_token` at `res/values/mapbox_access_token.xml`
+- The library ships an `app.plugin.js` entry at the package root per Expo's convention; consumers reference the library by its npm name.
+
+**Scope:**
+
+- The plugin handles the public runtime token only. The secret download token is a build-machine concern and is out of scope for the plugin (see T8).
+- Bare React Native consumers (non-Expo) are unaffected: they set the token directly in `Info.plist` / `res/values/mapbox_access_token.xml` per T8.
+
 ---
 
 ## 3. UI / UX Requirements
@@ -203,10 +234,17 @@ Standard React Native library Gradle setup. Mapbox SDK pulled from Maven via `bu
 
 ### T8 — Mapbox Access Token
 
-The Mapbox access token is configured by the consuming app, not the library:
+The Mapbox access token is configured by the consuming app, not the library. Two separate tokens are needed:
 
-- **iOS:** Token in the app's `Info.plist` under `MBXAccessToken`, or via the Mapbox SDK's token resolution mechanism
-- **Android:** Token in `AndroidManifest.xml` as `<meta-data android:name="MAPBOX_ACCESS_TOKEN" />`
+**Public runtime token (`pk.*`)** — read by the SDK at runtime. Storage locations used by Mapbox Navigation SDK v3:
+
+- **iOS:** `Info.plist` key `MBXAccessToken`
+- **Android:** string resource `mapbox_access_token` at `res/values/mapbox_access_token.xml` (the v2 `AndroidManifest.xml` meta-data pattern is no longer used in v3)
+
+**Secret download token (`sk.*`, scope `DOWNLOADS:READ`)** — used only at build time to authenticate against Mapbox's private SPM + Maven registries when pulling SDK binaries. Must never be committed or placed in any file shipped with the app.
+
+- **Local development:** `~/.netrc` (iOS) and `~/.gradle/gradle.properties` (Android).
+- **CI:** env var `MAPBOX_DOWNLOADS_TOKEN`. The library's Android `build.gradle` reads `System.getenv("MAPBOX_DOWNLOADS_TOKEN")` with `gradle.properties` fallback; the iOS build step materializes a scratch `~/.netrc` from the env var.
 
 The library must document this setup but never hardcode or bundle tokens.
 

@@ -87,3 +87,9 @@ nitrogen/
 
 # Claude Code
 .claude/settings.local.json
+
+# Environment / secrets — never commit Mapbox tokens or other credentials.
+# See README.md "Mapbox tokens" for the expected variables.
+.env
+.env.*
+!.env.example
