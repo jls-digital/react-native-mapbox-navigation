@@ -122,10 +122,18 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
   func recenterCamera() throws {
     NSLog("\(logTag) recenterCamera() invoked")
+    Task { @MainActor [weak self] in
+      self?.navigationViewController?.navigationMapView?.navigationCamera
+        .update(cameraState: .following)
+    }
   }
 
   func showRouteOverview() throws {
     NSLog("\(logTag) showRouteOverview() invoked")
+    Task { @MainActor [weak self] in
+      self?.navigationViewController?.navigationMapView?.navigationCamera
+        .update(cameraState: .overview)
+    }
   }
 
   // ── Setup ────────────────────────────────────────────
