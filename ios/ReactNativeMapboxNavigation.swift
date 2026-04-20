@@ -73,7 +73,13 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     didSet { NSLog("\(logTag) simulationSpeedMultiplier=\(simulationSpeedMultiplier?.description ?? "<nil>")") }
   }
   var mute: Bool? {
-    didSet { NSLog("\(logTag) mute=\(mute?.description ?? "<nil>")") }
+    didSet {
+      NSLog("\(logTag) mute=\(mute?.description ?? "<nil>")")
+      guard mute != oldValue, let newValue = mute else { return }
+      Task { @MainActor [weak self] in
+        self?.applyMute(newValue)
+      }
+    }
   }
   var colorScheme: String? {
     didSet { NSLog("\(logTag) colorScheme=\(colorScheme ?? "<nil>")") }
@@ -131,11 +137,30 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     } else {
       locationSource = .live
     }
-    let coreConfig = CoreConfig(locationSource: locationSource)
+    let locale: Locale
+    if let code = language, !code.isEmpty {
+      locale = Locale(identifier: code)
+    } else {
+      locale = .nationalizedCurrent
+    }
+    let coreConfig = CoreConfig(
+      locationSource: locationSource,
+      locale: locale
+    )
     let provider = MapboxNavigationProvider(coreConfig: coreConfig)
     mapboxNavigationProvider = provider
     mapboxNavigation = provider.mapboxNavigation
+    // Seed initial mute state. Runtime changes come through the `mute`
+    // prop setter.
+    provider.routeVoiceController.speechSynthesizer.muted = (mute == true)
     return provider.mapboxNavigation
+  }
+
+  @MainActor
+  private func applyMute(_ newValue: Bool) {
+    guard let provider = mapboxNavigationProvider else { return }
+    provider.routeVoiceController.speechSynthesizer.muted = newValue
+    onMuteChange?(newValue)
   }
 
   nonisolated private func scheduleSessionStart() {
