@@ -37,6 +37,7 @@ export function NavigationScreen({ navigation, route }: Props) {
   const navRef = useRef<MapboxNavigationRef>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showDebug, setShowDebug] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const addLog = (message: string) => {
     const entry: LogEntry = {
@@ -99,35 +100,62 @@ export function NavigationScreen({ navigation, route }: Props) {
         }}
       />
 
-      <View style={styles.controls}>
-        <TouchableOpacity
-          testID="navigation.button.recenter"
-          accessibilityRole="button"
-          style={styles.controlButton}
-          onPress={() => navRef.current?.recenterCamera()}
-        >
-          <Text style={styles.controlButtonText}>Recenter</Text>
-        </TouchableOpacity>
+      <View style={styles.controls} pointerEvents="box-none">
+        {menuOpen && (
+          <View style={styles.menuItems} pointerEvents="box-none">
+            <TouchableOpacity
+              testID="navigation.button.recenter"
+              accessibilityRole="button"
+              accessibilityLabel="Recenter camera"
+              style={styles.controlButton}
+              onPress={() => {
+                navRef.current?.recenterCamera();
+                setMenuOpen(false);
+              }}
+            >
+              <Text style={styles.controlButtonText}>Recenter</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              testID="navigation.button.overview"
+              accessibilityRole="button"
+              accessibilityLabel="Show route overview"
+              style={styles.controlButton}
+              onPress={() => {
+                navRef.current?.showRouteOverview();
+                setMenuOpen(false);
+              }}
+            >
+              <Text style={styles.controlButtonText}>Overview</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              testID="navigation.button.debug"
+              accessibilityRole="button"
+              accessibilityLabel="Toggle debug console"
+              style={[
+                styles.controlButton,
+                showDebug && styles.controlButtonActive,
+              ]}
+              onPress={() => {
+                setShowDebug((prev) => !prev);
+                setMenuOpen(false);
+              }}
+            >
+              <Text style={styles.controlButtonText}>Debug</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <TouchableOpacity
-          testID="navigation.button.overview"
+          testID="navigation.button.menu"
           accessibilityRole="button"
-          style={styles.controlButton}
-          onPress={() => navRef.current?.showRouteOverview()}
+          accessibilityLabel={menuOpen ? 'Close dev menu' : 'Open dev menu'}
+          accessibilityState={{ expanded: menuOpen }}
+          style={styles.menuToggle}
+          onPress={() => setMenuOpen((prev) => !prev)}
         >
-          <Text style={styles.controlButtonText}>Overview</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          testID="navigation.button.debug"
-          accessibilityRole="button"
-          style={[
-            styles.controlButton,
-            showDebug && styles.controlButtonActive,
-          ]}
-          onPress={() => setShowDebug((prev) => !prev)}
-        >
-          <Text style={styles.controlButtonText}>Debug</Text>
+          <Text style={styles.menuToggleText}>{menuOpen ? '✕' : '⋯'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -158,25 +186,41 @@ const styles = StyleSheet.create({
   },
   controls: {
     position: 'absolute',
-    bottom: 40,
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
+    bottom: 100,
+    right: 12,
+    alignItems: 'flex-end',
+  },
+  menuItems: {
+    alignItems: 'flex-end',
+    gap: 6,
+    marginBottom: 8,
+  },
+  menuToggle: {
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+  },
+  menuToggleText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: -2,
   },
   controlButton: {
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
   },
   controlButtonActive: {
     backgroundColor: '#007AFF',
   },
   controlButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   debugConsole: {

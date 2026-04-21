@@ -27,6 +27,11 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   private let carrier = UIViewController()
   private var navigationViewController: NavigationViewController?
 
+  // De-dup + post-arrival gate for location/progress emissions.
+  private var hasArrivedAtDestination = false
+  private var lastReportedCoordinate: CLLocationCoordinate2D?
+  private static let locationChangedEpsilonMeters: CLLocationDistance = 0.5
+
   deinit {
     routeRequestTask?.cancel()
     // Capture MainActor state before self is gone, then tear down on main.
@@ -418,13 +423,29 @@ extension HybridReactNativeMapboxNavigation: NavigationViewControllerDelegate {
     with location: CLLocation,
     rawLocation: CLLocation
   ) {
+    // Once the user has reached the final destination we stop emitting
+    // progress/location; the SDK keeps ticking but the caller already
+    // got onArrive.
+    guard !hasArrivedAtDestination else { return }
+
+    // De-duplicate: only emit when the map-matched location actually
+    // moved. This prevents a flood of identical updates when the user
+    // (or simulator) is stationary and matches SPEC T10's intent that
+    // observers fire on movement, not on a clock.
+    let coord = location.coordinate
+    if let last = lastReportedCoordinate,
+       distanceBetween(last, coord) < Self.locationChangedEpsilonMeters {
+      return
+    }
+    lastReportedCoordinate = coord
+
     onRouteProgressChange?(RouteProgress(
       distanceTraveled: progress.distanceTraveled,
       distanceRemaining: progress.distanceRemaining,
       durationRemaining: progress.durationRemaining,
       fractionTraveled: progress.fractionTraveled
     ))
-    onLocationChange?(location.coordinate.latitude, location.coordinate.longitude)
+    onLocationChange?(coord.latitude, coord.longitude)
   }
 
   @MainActor
@@ -445,6 +466,7 @@ extension HybridReactNativeMapboxNavigation: NavigationViewControllerDelegate {
     let isFinal = isFinalDestination(coord)
     NSLog("\(logTag) didArriveAt \(coord.latitude),\(coord.longitude) final=\(isFinal)")
     if isFinal {
+      hasArrivedAtDestination = true
       onArrive?(Coordinates(latitude: coord.latitude, longitude: coord.longitude))
     }
   }
@@ -453,6 +475,14 @@ extension HybridReactNativeMapboxNavigation: NavigationViewControllerDelegate {
     let epsilon = 1e-6
     return abs(coord.latitude - destination.latitude) < epsilon &&
            abs(coord.longitude - destination.longitude) < epsilon
+  }
+
+  private func distanceBetween(
+    _ a: CLLocationCoordinate2D,
+    _ b: CLLocationCoordinate2D
+  ) -> CLLocationDistance {
+    CLLocation(latitude: a.latitude, longitude: a.longitude)
+      .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
   }
 }
 

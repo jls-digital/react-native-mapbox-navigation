@@ -31,7 +31,9 @@ tags:
     visible:
       id: 'navigation.mapboxNavigation'
     timeout: 30000
-# Simulator drives the ~500m route in well under a minute.
+# Simulator drives the route at the SDK's default speed (no public
+# speed multiplier on iOS v3, see SPEC §B7). Allow enough slack for
+# the short Zurich preset to complete.
 - extendedWaitUntil:
     visible: 'Arrived'
-    timeout: 120000
+    timeout: 240000
