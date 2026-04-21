@@ -1926,6 +1926,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@expo/image-utils@npm:^0.8.13":
+  version: 0.8.13
+  resolution: "@expo/image-utils@npm:0.8.13"
+  dependencies:
+    "@expo/require-utils": "npm:^55.0.4"
+    "@expo/spawn-async": "npm:^1.7.2"
+    chalk: "npm:^4.0.0"
+    getenv: "npm:^2.0.0"
+    jimp-compact: "npm:0.16.1"
+    parse-png: "npm:^2.1.0"
+    semver: "npm:^7.6.0"
+  checksum: 10c0/eabd8b1578b11a6ba5a0c310a770e16611eebda932a1ad7f4dc4f37c0710c7029df927e309272c896d8f23b509b31cbd3bca5fee19f05dd169b44fabd3c764c5
+  languageName: node
+  linkType: hard
+
 "@expo/image-utils@npm:^0.8.8":
   version: 0.8.12
   resolution: "@expo/image-utils@npm:0.8.12"
@@ -2099,6 +2114,22 @@ __metadata:
   peerDependencies:
     expo: "*"
   checksum: 10c0/70bef3fe360a7035b449e9f137e5046c6fe9137f2220f87bb563af2c34de4593034cd68cea5716ae98930e43a63331659795d1ec2af0f9a905565f2086f7c1a1
+  languageName: node
+  linkType: hard
+
+"@expo/require-utils@npm:^55.0.4":
+  version: 55.0.4
+  resolution: "@expo/require-utils@npm:55.0.4"
+  dependencies:
+    "@babel/code-frame": "npm:^7.20.0"
+    "@babel/core": "npm:^7.25.2"
+    "@babel/plugin-transform-modules-commonjs": "npm:^7.24.8"
+  peerDependencies:
+    typescript: ^5.0.0 || ^5.0.0-0
+  peerDependenciesMeta:
+    typescript:
+      optional: true
+  checksum: 10c0/2bd6ed23a117ca4538f8972313ff201de6dffc196b65c0322b2f078f98a439eaaa1104a06b2dd8152f88b52abbe741acc8abc20c9820dcf275409f6c387b865d
   languageName: node
   linkType: hard
 
@@ -2330,12 +2361,12 @@ __metadata:
   resolution: "@jls-digital/react-native-mapbox-navigation-example@workspace:example"
   dependencies:
     "@expo/metro-runtime": "npm:~6.1.2"
-    "@jls-digital/react-native-mapbox-navigation": "workspace:*"
     "@react-navigation/native": "npm:^7.2.2"
     "@react-navigation/native-stack": "npm:^7.14.10"
     expo: "npm:~54.0.33"
     expo-build-properties: "npm:^55.0.13"
     expo-dev-client: "npm:~6.0.20"
+    expo-location: "npm:^55.1.8"
     expo-status-bar: "npm:~3.0.9"
     react: "npm:19.1.0"
     react-dom: "npm:19.1.0"
@@ -2349,7 +2380,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@jls-digital/react-native-mapbox-navigation@workspace:*, @jls-digital/react-native-mapbox-navigation@workspace:.":
+"@jls-digital/react-native-mapbox-navigation@workspace:.":
   version: 0.0.0-use.local
   resolution: "@jls-digital/react-native-mapbox-navigation@workspace:."
   dependencies:
@@ -2374,9 +2405,13 @@ __metadata:
     turbo: "npm:^2.8.21"
     typescript: "npm:^6.0.2"
   peerDependencies:
+    "@expo/config-plugins": ">=8.0.0"
     react: "*"
     react-native: "*"
     react-native-nitro-modules: ^0.35.2
+  peerDependenciesMeta:
+    "@expo/config-plugins":
+      optional: true
   languageName: unknown
   linkType: soft
 
@@ -5336,6 +5371,17 @@ __metadata:
     expo: "*"
     react: "*"
   checksum: 10c0/23064b18285498e70be0aa525dc875cc809fc723b9a101d51e4721a09b1460eb041c73ebeb6d51e9175bb4c9b7a668bc08a48b99ebddac4cfaadb5a47194d329
+  languageName: node
+  linkType: hard
+
+"expo-location@npm:^55.1.8":
+  version: 55.1.8
+  resolution: "expo-location@npm:55.1.8"
+  dependencies:
+    "@expo/image-utils": "npm:^0.8.13"
+  peerDependencies:
+    expo: "*"
+  checksum: 10c0/2bb2e667dd812cd479a72df217c6a55ea7fc6e5edd160ccf7e28223aca6eedfdf598b6ca81e7837fe6562efe65038a23a02d67009eb4155b08a2d0f92cf6b368
   languageName: node
   linkType: hard
 

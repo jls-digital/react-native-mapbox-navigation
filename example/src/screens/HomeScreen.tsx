@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import {
+  Alert,
+  Linking,
   ScrollView,
   StyleSheet,
   Switch,
@@ -8,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as Location from 'expo-location';
 import type { MapboxLanguage } from '@jls-digital/react-native-mapbox-navigation';
 import { ROUTE_PRESETS, type RoutePreset } from '../constants/routes';
 import type { RootStackParamList } from '../App';
@@ -34,7 +37,30 @@ export function HomeScreen({ navigation }: Props) {
     'auto'
   );
 
-  const handleStartNavigation = () => {
+  const handleStartNavigation = async () => {
+    // Host apps own location permission UX. The library only reports
+    // GPS_PERMISSION_DENIED via onError; it never requests on behalf of
+    // the consumer. We gate entry here so the native nav view never
+    // mounts without foreground location authorization.
+    const current = await Location.getForegroundPermissionsAsync();
+    let status = current.status;
+    if (current.status !== 'granted') {
+      if (current.canAskAgain) {
+        const requested = await Location.requestForegroundPermissionsAsync();
+        status = requested.status;
+      }
+      if (status !== 'granted') {
+        Alert.alert(
+          'Location permission required',
+          'This demo needs "While Using the App" location access to drive the navigation preview.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
+        return;
+      }
+    }
     navigation.navigate('Navigation', {
       origin: selectedPreset.origin,
       destination: selectedPreset.destination,

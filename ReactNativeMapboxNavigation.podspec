@@ -36,4 +36,13 @@ Pod::Spec.new do |s|
     requirement: { kind: 'upToNextMinorVersion', minimumVersion: '3.20.0' },
     products: ['MapboxNavigationCore', 'MapboxNavigationUIKit', 'MapboxDirections']
   )
+
+  # Load the Podfile post-install helper so `react_native_mapbox_navigation_post_install`
+  # is available in the consumer's Podfile. Expo (CNG) consumers get the
+  # call wired automatically by the library's config plugin; bare RN
+  # consumers add it to their Podfile post_install (see README).
+  # Without this call the app crashes at launch with a dyld
+  # "Library not loaded: @rpath/Turf.framework/Turf" error because
+  # Mapbox's transitive SPM frameworks aren't embedded by CocoaPods.
+  load File.join(__dir__, 'scripts', 'spm_frameworks_post_install.rb')
 end

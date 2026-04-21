@@ -14,7 +14,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "jlsdigital.reactnativemapboxnavigation.example"
+      "bundleIdentifier": "jlsdigital.reactnativemapboxnavigation.example",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This demo needs your location to guide you along the selected route.",
+        "UIBackgroundModes": ["audio"]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -36,7 +40,7 @@
           }
         }
       ],
-      "@jls-digital/react-native-mapbox-navigation"
+      "../app.plugin.js"
     ]
   }
 }
