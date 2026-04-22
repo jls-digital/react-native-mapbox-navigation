@@ -39,18 +39,20 @@ tags:
     visible:
       id: 'navigation.mapboxNavigation'
     timeout: 30000
-# Short route finishes in well under a minute; wait for the example
-# app's `onArrive`-triggered alert.
+# Short route finishes in well under a minute. The Mapbox native
+# end-of-trip UI shows "You have arrived" — assert on that rather
+# than our onArrive log (NavigationScreen no longer pops an Alert;
+# the native banner is the stable signal).
 - extendedWaitUntil:
-    visible: 'Arrived'
+    visible: 'You have arrived'
     timeout: 120000
-- assertVisible: 'You have reached your destination.'
-# OK dismisses the alert and calls navigation.goBack() — that unmounts
-# the MapboxNavigation component WITHOUT the SDK's cancel button
-# firing. Pre-fix, teardown was hooked only into the SDK's dismiss
-# delegate, so the MapboxNavigationProvider stayed alive and the next
-# mount below tripped `checkInstanceIsUnique`.
-- tapOn: 'OK'
+# Tap the Mapbox native "End Navigation" button on the end-of-trip
+# UI — that fires onNavigationEnd → navigation.goBack(). This path
+# unmounts the MapboxNavigation component WITHOUT the SDK's cancel
+# button firing. Pre-fix, teardown was hooked only into the SDK's
+# dismiss delegate, so the MapboxNavigationProvider stayed alive
+# and the next mount below tripped `checkInstanceIsUnique`.
+- tapOn: 'End Navigation'
 - extendedWaitUntil:
     visible:
       id: 'home.preset.0'

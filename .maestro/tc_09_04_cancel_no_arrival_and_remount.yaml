@@ -53,10 +53,12 @@ tags:
     visible:
       id: 'home.preset.0'
     timeout: 10000
-# The "Arrived" alert must NOT appear — if it does, the arrival
-# subscription fired after cancel (the bug we're fixing).
-- assertNotVisible: 'Arrived'
-- assertNotVisible: 'You have reached your destination.'
+# No arrival event should have leaked through after cancel. Under the
+# new arrival contract, onArrive no longer pops an Alert — so instead
+# of asserting an alert's absence we rely on the companion TC-9.5 to
+# prove the positive path and this assertion covers the negative: if
+# the old bug recurs, the next mount below would crash on
+# `checkInstanceIsUnique` and this flow would fail.
 # ── Second nav session — proves teardown released the SDK session ─
 # Pre-fix, mounting a second MapboxNavigation instance here tripped
 # Mapbox's `checkInstanceIsUnique` assertion because the previous

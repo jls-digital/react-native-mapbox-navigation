@@ -1,5 +1,5 @@
 appId: jlsdigital.reactnativemapboxnavigation.example
-name: TC-2.1 Simulated route completes with arrival alert
+name: TC-2.1 Simulated route completes; onArrive fires; native end dismisses
 tags:
   - smoke
 ---
@@ -40,15 +40,19 @@ tags:
     visible:
       id: 'navigation.mapboxNavigation'
     timeout: 30000
-# The ~150m simulated preset finishes in well under a minute.
-# Our `onArrive` handler in NavigationScreen shows an Alert.alert
-# with title "Arrived" — that's what we assert on. The Alert is
-# presented on top of the Mapbox arrival UI.
+# Under the new arrival contract, onArrive is a notification-only
+# hook — NavigationScreen just logs, it does not dismiss the nav
+# view. The Mapbox SDK's own end-of-trip UI remains visible ("You
+# have arrived" banner + rating + "End Navigation" button), which
+# is what we assert on. The ~150m simulated preset finishes in well
+# under a minute.
 - extendedWaitUntil:
-    visible: 'Arrived'
+    visible: 'You have arrived'
     timeout: 120000
-- assertVisible: 'You have reached your destination.'
-- tapOn: 'OK'
+# Dismiss the Mapbox end-of-trip UI via its native "End Navigation"
+# button. That fires onNavigationEnd in the example app, which calls
+# navigation.goBack().
+- tapOn: 'End Navigation'
 - extendedWaitUntil:
     visible:
       id: 'home.startNavigation'

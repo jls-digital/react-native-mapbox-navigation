@@ -59,16 +59,23 @@
 
 ## 2. Arrival
 
-### TC-2.1: Simulated route completes with arrival event
+### TC-2.1: Simulated route completes; onArrive fires; native end dismisses
 
 **Preconditions:** Simulate Route is ON.
 
+`onArrive` is a notification-only hook — the library does **not**
+dismiss the nav view on arrival. The Mapbox SDK's built-in
+end-of-trip UI stays visible; the user dismisses it via the native
+"End Navigation" button, which fires `onNavigationEnd`.
+
 1. Select **preset 0** (short test route) and tap "Start Navigation".
 2. The simulated location moves along the route automatically.
-3. When the simulated driver reaches the destination, `onArrive` fires.
-4. Verify an "Arrived" alert dialog appears with message "You have reached your destination."
-5. Tap "OK" in the alert.
-6. Verify the app navigates back to the Home screen.
+3. On arrival, `onArrive` fires (notification-only) and Mapbox's
+   end-of-trip UI appears — verify the native "You have arrived"
+   banner is visible.
+4. Tap the native "End Navigation" button on the end-of-trip UI.
+5. Verify `onNavigationEnd` triggers `navigation.goBack()` and the
+   app returns to the Home screen.
 
 ### TC-2.2: Arrival event contains correct destination coordinates
 
@@ -318,8 +325,11 @@ component finalised, which lags unmount).
    in the bottom banner.
 4. Verify `onCancelNavigation` fires and the app navigates back to
    Home.
-5. Verify NO "Arrived" alert appears — `onArrive` must not fire on
-   the cancel path.
+5. Verify NO arrival event leaks through — `onArrive` must not
+   fire on the cancel path. (Under the new arrival contract
+   `onArrive` no longer pops an Alert; observed via the debug
+   console or by the absence of `checkInstanceIsUnique` in the
+   remount below.)
 6. Immediately start navigation again with preset 0.
 7. Verify the second `NavigationViewController` mounts without
    triggering `checkInstanceIsUnique`, proving the previous SDK
@@ -328,21 +338,23 @@ component finalised, which lags unmount).
 ### TC-9.5: Arrival → remount works (teardown on RN unmount)
 
 **Regression test** that teardown fires on *any* JS-initiated unmount,
-not only when the SDK's own cancel button is tapped. On arrival the
-typical flow is `onArrive` → host app shows an alert → user taps OK →
-`navigation.goBack()`, which unmounts the `MapboxNavigation` component
-without ever triggering the SDK's `navigationViewControllerDidDismiss`
-delegate. If teardown is hooked only into that delegate, the
-`MapboxNavigationProvider` stays alive and the next mount trips
-`checkInstanceIsUnique`. Teardown must be hooked into the host
-UIView's lifecycle (see SPEC §T9).
+not only when the SDK's own cancel button is tapped. Under the new
+arrival contract the flow is: `onArrive` updates app state →
+end-of-trip UI stays visible → user taps Mapbox's native
+"End Navigation" button → `onNavigationEnd` fires →
+`navigation.goBack()`, which unmounts `MapboxNavigation` via the
+Mapbox-dismissal path. The SDK's own
+`navigationViewControllerDidDismiss` delegate *does* fire here (with
+`byCanceling == false`), but React Navigation's pop may race it and
+the UIView-detach path may win — so teardown must be idempotent and
+driven primarily by the host UIView's lifecycle (see SPEC §T9).
 
 1. Start navigation with **preset 0** (simulation ON).
-2. Wait for the simulated route to complete and for the example app's
-   "Arrived" alert to appear (body: "You have reached your
-   destination.").
-3. Tap "OK" — the example app calls `navigation.goBack()`, which
-   unmounts the `MapboxNavigation` component.
+2. Wait for the simulated route to complete — verify Mapbox's
+   native "You have arrived" banner is visible.
+3. Tap the Mapbox native "End Navigation" button on the end-of-trip
+   UI. `onNavigationEnd` fires and the example app calls
+   `navigation.goBack()`.
 4. Verify the app returns to Home.
 5. Immediately start navigation again with preset 0.
 6. Verify the second `NavigationViewController` mounts without
