@@ -1,0 +1,55 @@
+appId: jlsdigital.reactnativemapboxnavigation.example
+name: TC-2.1 Simulated route completes with arrival alert
+tags:
+  - smoke
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: 'http://localhost:8081'
+    commands:
+      - tapOn: 'http://localhost:8081'
+- runFlow:
+    when:
+      visible: 'Continue'
+    commands:
+      - tapOn: 'Continue'
+# First-launch expo-dev-client shows its dev menu as a bottom sheet.
+# Tap the backdrop above the sheet to dismiss (iOS-style modal).
+- runFlow:
+    when:
+      visible: 'Fast refresh'
+    commands:
+      - tapOn:
+          point: '50%, 8%'
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 60000
+- tapOn:
+    id: 'home.preset.0'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.mapboxNavigation'
+    timeout: 30000
+# The ~150m simulated preset finishes in well under a minute.
+# Our `onArrive` handler in NavigationScreen shows an Alert.alert
+# with title "Arrived" — that's what we assert on. The Alert is
+# presented on top of the Mapbox arrival UI.
+- extendedWaitUntil:
+    visible: 'Arrived'
+    timeout: 120000
+- assertVisible: 'You have reached your destination.'
+- tapOn: 'OK'
+- extendedWaitUntil:
+    visible:
+      id: 'home.startNavigation'
+    timeout: 10000

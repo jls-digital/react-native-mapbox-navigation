@@ -1,0 +1,47 @@
+appId: jlsdigital.reactnativemapboxnavigation.example
+name: TC-7.3 Invalid coordinates trigger INVALID_COORDINATES error
+tags:
+  - error
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: 'http://localhost:8081'
+    commands:
+      - tapOn: 'http://localhost:8081'
+- runFlow:
+    when:
+      visible: 'Continue'
+    commands:
+      - tapOn: 'Continue'
+- runFlow:
+    when:
+      visible: 'Fast refresh'
+    commands:
+      - tapOn:
+          point: '50%, 8%'
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 60000
+# Preset index 5 is "Invalid coordinates (out of range)" — see
+# example/src/constants/routes.ts.
+- tapOn:
+    id: 'home.preset.5'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+# The native layer validates before requesting a route and fires
+# onError synchronously, which the example app surfaces via an alert.
+# Maestro's text matcher is regex + anchored, so use DOTALL (?s) and
+# wildcards to match the multiline alert body.
+- extendedWaitUntil:
+    visible: 'Navigation Error'
+    timeout: 15000
+- assertVisible: '(?s).*INVALID_COORDINATES.*'
+- tapOn: 'OK'

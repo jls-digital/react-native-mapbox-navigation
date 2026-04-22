@@ -1,0 +1,48 @@
+appId: jlsdigital.reactnativemapboxnavigation.example
+name: TC-7.4 Unroutable destination triggers ROUTE_CALCULATION_FAILED
+tags:
+  - error
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: 'http://localhost:8081'
+    commands:
+      - tapOn: 'http://localhost:8081'
+- runFlow:
+    when:
+      visible: 'Continue'
+    commands:
+      - tapOn: 'Continue'
+- runFlow:
+    when:
+      visible: 'Fast refresh'
+    commands:
+      - tapOn:
+          point: '50%, 8%'
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 60000
+# Preset index 6 is "Unroutable (ocean destination)" — see
+# example/src/constants/routes.ts. Mapbox Directions returns no
+# routes for this destination; classifyRouteError reports it as
+# ROUTE_CALCULATION_FAILED.
+- tapOn:
+    id: 'home.preset.6'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+# Route calculation is async — allow up to 30s for the request to
+# resolve before the error alert appears. Maestro's text matcher is
+# regex + anchored; use DOTALL (?s) and wildcards for the multiline body.
+- extendedWaitUntil:
+    visible: 'Navigation Error'
+    timeout: 30000
+- assertVisible: '(?s).*ROUTE_CALCULATION_FAILED.*'
+- tapOn: 'OK'

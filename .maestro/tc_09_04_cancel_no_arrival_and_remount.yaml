@@ -1,0 +1,76 @@
+appId: jlsdigital.reactnativemapboxnavigation.example
+name: TC-9.4 Cancel does not fire arrival; remount after cancel works
+tags:
+  - lifecycle
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: 'http://localhost:8081'
+    commands:
+      - tapOn: 'http://localhost:8081'
+- runFlow:
+    when:
+      visible: 'Continue'
+    commands:
+      - tapOn: 'Continue'
+- runFlow:
+    when:
+      visible: 'Fast refresh'
+    commands:
+      - tapOn:
+          point: '50%, 8%'
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 60000
+# ── First nav session ────────────────────────────────────
+- tapOn:
+    id: 'home.preset.0'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.mapboxNavigation'
+    timeout: 30000
+# Give the nav UI a beat to settle and for the simulator to start
+# pushing location updates (so we exercise teardown mid-route, not
+# immediately after mount).
+- extendedWaitUntil:
+    visible: 'close'
+    timeout: 15000
+# Cancel via the Mapbox SDK's built-in cancel button in the bottom
+# banner — its UIAccessibility label is exactly "close".
+- tapOn: 'close'
+# onCancelNavigation goes back to Home.
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 10000
+# The "Arrived" alert must NOT appear — if it does, the arrival
+# subscription fired after cancel (the bug we're fixing).
+- assertNotVisible: 'Arrived'
+- assertNotVisible: 'You have reached your destination.'
+# ── Second nav session — proves teardown released the SDK session ─
+# Pre-fix, mounting a second MapboxNavigation instance here tripped
+# Mapbox's `checkInstanceIsUnique` assertion because the previous
+# `MapboxNavigationProvider` was still alive.
+- tapOn:
+    id: 'home.preset.0'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.mapboxNavigation'
+    timeout: 30000

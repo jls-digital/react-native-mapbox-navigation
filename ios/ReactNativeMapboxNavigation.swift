@@ -7,10 +7,50 @@ import UIKit
 
 private let logTag = "[RNMapboxNav]"
 
+// ── MapboxProviderStore ────────────────────────────────
+// Process-wide cache for `MapboxNavigationProvider`. Mapbox's provider
+// is a deliberate singleton (guarded by `checkInstanceIsUnique`) and its
+// internal threadpool owns StyleManager — releasing it in the same
+// runloop turn as `setToIdle()` races with in-flight draw work and
+// segfaults. Keeping it alive across mounts sidesteps the race entirely:
+// unmount becomes "cancel subscriptions + detach nav VC + setToIdle()",
+// with no provider release at all.
+//
+// `CoreConfig` (locale + locationSource) is baked in at init — so if the
+// consumer toggles language or shouldSimulateRoute, we drop the cached
+// provider and rebuild. That reintroduces the release race exactly once
+// per config swap, which is rare and gated by setToIdle().
+@MainActor
+final class MapboxProviderStore {
+  static let shared = MapboxProviderStore()
+  private var provider: MapboxNavigationProvider?
+  private var currentConfigKey: String?
+
+  private init() {}
+
+  func acquire(configKey: String, coreConfig: CoreConfig) -> MapboxNavigationProvider {
+    if let existing = provider, currentConfigKey == configKey {
+      return existing
+    }
+    if let old = provider {
+      NSLog("\(logTag) MapboxProviderStore: config changed (\(currentConfigKey ?? "nil") → \(configKey)) — rebuilding")
+      old.mapboxNavigation.tripSession().setToIdle()
+    }
+    let new = MapboxNavigationProvider(coreConfig: coreConfig)
+    provider = new
+    currentConfigKey = configKey
+    return new
+  }
+}
+
 class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
-  // UIView
-  var view: UIView = UIView()
+  // UIView — a lifecycle-aware subclass so we can detach Mapbox UI the
+  // moment RN removes us from the view tree, regardless of why (cancel,
+  // arrival followed by goBack, conditional render, parent unmount).
+  // Nitro's HybridView protocol only exposes beforeUpdate / afterUpdate —
+  // neither fires on unmount — so we piggy-back on the UIView lifecycle.
+  var view: UIView = LifecycleView()
 
   // ── Mapbox session ───────────────────────────────────
   // Nitro's base init() is non-isolated, so we can't override with a
@@ -32,20 +72,67 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   private var lastReportedCoordinate: CLLocationCoordinate2D?
   private static let locationChangedEpsilonMeters: CLLocationDistance = 0.5
 
+  // Track mute so we can detect taps on the SDK's built-in mute ornament.
+  // The SpeechSynthesizing protocol exposes `muted` as a plain get/set
+  // (no publisher), so we observe UserDefaults where the multiplexed
+  // synthesizer persists it under a well-known key.
+  private var lastKnownMuted: Bool = false
+  private var userDefaultsObserver: NSObjectProtocol?
+  private static let multiplexedMutedKey =
+    "com.mapbox.navigation.MultiplexedSpeechSynthesizer.isMuted"
+
+  // Flipped once the nav VC dismisses (cancel OR arrival) so late events
+  // from the SDK — e.g. an arrival tick that arrives after the user tapped
+  // cancel — are dropped instead of triggering onArrive on a gone session.
+  private var isShuttingDown = false
+
   deinit {
     routeRequestTask?.cancel()
-    // Capture MainActor state before self is gone, then tear down on main.
-    let nav = mapboxNavigation
-    let carrierVC = carrier
-    let navVC = navigationViewController
-    Task { @MainActor in
-      navVC?.willMove(toParent: nil)
-      navVC?.view.removeFromSuperview()
-      navVC?.removeFromParent()
-      carrierVC.willMove(toParent: nil)
-      carrierVC.view.removeFromSuperview()
-      carrierVC.removeFromParent()
-      nav?.tripSession().setToIdle()
+    if let obs = userDefaultsObserver {
+      NotificationCenter.default.removeObserver(obs)
+    }
+    // Provider lives in MapboxProviderStore across mounts; nothing to
+    // release here. If UI detach didn't already happen via LifecycleView,
+    // it's too late to touch MainActor-only state from deinit anyway.
+  }
+
+  // Detach this instance from the shared Mapbox provider: drop
+  // subscriptions, dismiss the nav VC, flip the trip session to idle.
+  // The provider itself stays alive in MapboxProviderStore so the next
+  // mount reuses it without tripping `checkInstanceIsUnique` and without
+  // racing Mapbox's internal threadpool during release.
+  //
+  // Called from:
+  //  - `LifecycleView.onWillDetach` when RN removes our view from the
+  //    tree (covers arrival→goBack, cancel→goBack, conditional render,
+  //    parent screen unmount — i.e. every JS-initiated unmount).
+  //  - `navigationViewControllerDidDismiss` when the SDK's own cancel
+  //    UI fires, so the arrival sink stops before any late tick.
+  @MainActor
+  private func detachNavigationUI() {
+    guard !isShuttingDown else { return }
+    isShuttingDown = true
+    NSLog("\(logTag) detachNavigationUI()")
+    cancellables.removeAll()
+    routeRequestTask?.cancel()
+    routeRequestTask = nil
+    if let navVC = navigationViewController {
+      navVC.willMove(toParent: nil)
+      navVC.view.removeFromSuperview()
+      navVC.removeFromParent()
+    }
+    navigationViewController = nil
+    if carrier.parent != nil {
+      carrier.willMove(toParent: nil)
+      carrier.view.removeFromSuperview()
+      carrier.removeFromParent()
+    }
+    mapboxNavigation?.tripSession().setToIdle()
+    mapboxNavigationProvider = nil
+    mapboxNavigation = nil
+    if let obs = userDefaultsObserver {
+      NotificationCenter.default.removeObserver(obs)
+      userDefaultsObserver = nil
     }
   }
 
@@ -54,7 +141,22 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   func beforeUpdate() {}
 
   func afterUpdate() {
+    wireLifecycleHooks()
     scheduleSessionStart()
+  }
+
+  nonisolated private func wireLifecycleHooks() {
+    Task { @MainActor [weak self] in
+      guard let self, let lv = self.view as? LifecycleView,
+            lv.onWillDetach == nil else { return }
+      lv.onWillDetach = { [weak self] in
+        // RN has detached our view from the window — drop our UI hold on
+        // the shared provider. Safe to fire on transient detaches too;
+        // worst case we'd kill a live nav session, which LifecycleView's
+        // debounce guards against.
+        self?.detachNavigationUI()
+      }
+    }
   }
 
   // ── Props ────────────────────────────────────────────
@@ -166,12 +268,20 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
       locationSource: locationSource,
       locale: locale
     )
-    let provider = MapboxNavigationProvider(coreConfig: coreConfig)
+    let configKey = "sim=\(shouldSimulateRoute == true)|locale=\(locale.identifier)"
+    let provider = MapboxProviderStore.shared.acquire(
+      configKey: configKey,
+      coreConfig: coreConfig
+    )
     mapboxNavigationProvider = provider
     mapboxNavigation = provider.mapboxNavigation
     // Seed initial mute state. Runtime changes come through the `mute`
-    // prop setter.
-    provider.routeVoiceController.speechSynthesizer.muted = (mute == true)
+    // prop setter or through the SDK's built-in mute ornament (observed
+    // via UserDefaults, see `startObservingNativeMute`).
+    let initialMuted = (mute == true)
+    provider.routeVoiceController.speechSynthesizer.muted = initialMuted
+    lastKnownMuted = initialMuted
+    startObservingNativeMute()
     return provider.mapboxNavigation
   }
 
@@ -179,7 +289,37 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   private func applyMute(_ newValue: Bool) {
     guard let provider = mapboxNavigationProvider else { return }
     provider.routeVoiceController.speechSynthesizer.muted = newValue
+    // Update last-known BEFORE firing so the UserDefaults notification
+    // that follows this write is a no-op (prevents double-emit).
+    guard lastKnownMuted != newValue else { return }
+    lastKnownMuted = newValue
     onMuteChange?(newValue)
+  }
+
+  @MainActor
+  private func startObservingNativeMute() {
+    guard userDefaultsObserver == nil else { return }
+    userDefaultsObserver = NotificationCenter.default.addObserver(
+      forName: UserDefaults.didChangeNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      // Always trampoline to MainActor; the notification may arrive on a
+      // background queue depending on writer.
+      Task { @MainActor in
+        self?.syncNativeMuteIfChanged()
+      }
+    }
+  }
+
+  @MainActor
+  private func syncNativeMuteIfChanged() {
+    guard let provider = mapboxNavigationProvider else { return }
+    let current = provider.routeVoiceController.speechSynthesizer.muted
+    guard current != lastKnownMuted else { return }
+    NSLog("\(logTag) native mute toggle detected → \(current)")
+    lastKnownMuted = current
+    onMuteChange?(current)
   }
 
   @MainActor
@@ -303,25 +443,29 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
   private func emitRouteError(_ error: Error) {
     let message = error.localizedDescription
-    let code: String
-    if error is URLError {
-      code = "NETWORK_ERROR"
-    } else if looksLikeAuthFailure(error, message: message) {
-      code = "SDK_INIT_FAILED"
-    } else {
-      code = "ROUTE_CALCULATION_FAILED"
-    }
+    let code = classifyRouteError(error)
     NSLog("\(logTag) route error code=\(code) message=\(message)")
     onError?(code, message)
   }
 
-  private func looksLikeAuthFailure(_ error: Error, message: String) -> Bool {
-    let nsError = error as NSError
-    if nsError.code == 401 || nsError.code == 403 { return true }
-    let lowered = message.lowercased()
-    return lowered.contains("unauthorized") ||
-           lowered.contains("access token") ||
-           lowered.contains("401") || lowered.contains("403")
+  private func classifyRouteError(_ error: Error) -> String {
+    if let directionsError = error as? DirectionsError {
+      switch directionsError {
+      case .network:
+        return "NETWORK_ERROR"
+      case .unknown(let response, _, _, _):
+        if let http = response as? HTTPURLResponse, http.statusCode == 401 || http.statusCode == 403 {
+          return "SDK_INIT_FAILED"
+        }
+        return "ROUTE_CALCULATION_FAILED"
+      default:
+        return "ROUTE_CALCULATION_FAILED"
+      }
+    }
+    if error is URLError {
+      return "NETWORK_ERROR"
+    }
+    return "ROUTE_CALCULATION_FAILED"
   }
 
   // ── Navigation UI mount ──────────────────────────────
@@ -330,6 +474,8 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   private func presentNavigationUI(routes: NavigationRoutes) {
     guard navigationViewController == nil,
           let provider = mapboxNavigationProvider else { return }
+
+    subscribeToArrival(navigation: provider.mapboxNavigation.navigation())
 
     // NOTE: simulation is wired at the `MapboxNavigationProvider` level via
     // `CoreConfig.locationSource = .simulation(...)` (see `ensureMapboxNavigation`).
@@ -366,6 +512,34 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     navVC.didMove(toParent: carrier)
     NSLog("\(logTag) NavigationViewController embedded")
     applyColorScheme()
+  }
+
+  @MainActor
+  private func subscribeToArrival(navigation: NavigationController) {
+    navigation.waypointsArrival
+      .sink { [weak self] status in
+        guard let self, !self.isShuttingDown else { return }
+        if status.event is WaypointArrivalStatus.Events.ToFinalDestination {
+          NSLog("\(logTag) waypointsArrival → ToFinalDestination")
+          // Emit one final progress tick saturated to 100% before
+          // the arrive callback. Mapbox's `fractionTraveled` reflects
+          // polyline-fraction and fires arrival within a radius, so
+          // the last natural tick is typically below 1.0.
+          let totalDistance = self.currentRoutes?.mainRoute.route.distance ?? 0
+          self.onRouteProgressChange?(RouteProgress(
+            distanceTraveled: totalDistance,
+            distanceRemaining: 0,
+            durationRemaining: 0,
+            fractionTraveled: 1.0
+          ))
+          self.hasArrivedAtDestination = true
+          self.onArrive?(Coordinates(
+            latitude: self.destination.latitude,
+            longitude: self.destination.longitude
+          ))
+        }
+      }
+      .store(in: &cancellables)
   }
 
   @MainActor
@@ -414,6 +588,10 @@ extension HybridReactNativeMapboxNavigation: NavigationViewControllerDelegate {
     if canceled {
       onCancelNavigation?()
     }
+    // Detach synchronously regardless of arrival vs cancel so the late
+    // arrival sink is gated (isShuttingDown) before any trailing tick
+    // and the SDK cancel path matches the JS-unmount path exactly.
+    detachNavigationUI()
   }
 
   @MainActor
@@ -455,26 +633,6 @@ extension HybridReactNativeMapboxNavigation: NavigationViewControllerDelegate {
   ) {
     NSLog("\(logTag) didRerouteAlong route distance=\(route.distance)m")
     onReroute?()
-  }
-
-  @MainActor
-  func navigationViewController(
-    _ navigationViewController: NavigationViewController,
-    didArriveAt waypoint: MapboxDirections.Waypoint
-  ) {
-    let coord = waypoint.coordinate
-    let isFinal = isFinalDestination(coord)
-    NSLog("\(logTag) didArriveAt \(coord.latitude),\(coord.longitude) final=\(isFinal)")
-    if isFinal {
-      hasArrivedAtDestination = true
-      onArrive?(Coordinates(latitude: coord.latitude, longitude: coord.longitude))
-    }
-  }
-
-  private func isFinalDestination(_ coord: CLLocationCoordinate2D) -> Bool {
-    let epsilon = 1e-6
-    return abs(coord.latitude - destination.latitude) < epsilon &&
-           abs(coord.longitude - destination.longitude) < epsilon
   }
 
   private func distanceBetween(
@@ -542,5 +700,38 @@ private func applyFontOverride(_ fontFamily: String?) {
 private extension Coordinates {
   var coreLocation: CLLocationCoordinate2D {
     CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+  }
+}
+
+// ── Lifecycle-aware host view ──────────────────────────
+// Fires `onWillDetach` once the view has been detached from the window
+// for real — not during transient layout or stack-transition churn.
+//
+// Why `didMoveToWindow` + a runloop-deferred debounce: `react-native-
+// screens` transiently detaches/re-attaches the screen's containers
+// during push/pop animations. A spurious detach would dismiss live nav
+// UI (the provider itself lives in `MapboxProviderStore` so it's
+// unaffected, but the user would lose their session). The async defer
+// lets the hierarchy re-attach before we commit.
+final class LifecycleView: UIView {
+  var onWillDetach: (() -> Void)?
+  private var hasBeenAttached = false
+  private var teardownPending = false
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    if window != nil {
+      hasBeenAttached = true
+      // A pending teardown is no longer valid — we're back in a window.
+      teardownPending = false
+      return
+    }
+    guard hasBeenAttached, !teardownPending else { return }
+    teardownPending = true
+    DispatchQueue.main.async { [weak self] in
+      guard let self, self.teardownPending, self.window == nil else { return }
+      self.teardownPending = false
+      self.onWillDetach?()
+    }
   }
 }

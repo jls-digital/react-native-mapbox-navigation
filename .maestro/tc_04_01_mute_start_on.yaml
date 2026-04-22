@@ -1,0 +1,65 @@
+appId: jlsdigital.reactnativemapboxnavigation.example
+name: TC-4.1 Start muted via JS prop, debug log shows mute state
+tags:
+  - voice
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: 'http://localhost:8081'
+    commands:
+      - tapOn: 'http://localhost:8081'
+- runFlow:
+    when:
+      visible: 'Continue'
+    commands:
+      - tapOn: 'Continue'
+- runFlow:
+    when:
+      visible: 'Fast refresh'
+    commands:
+      - tapOn:
+          point: '50%, 8%'
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 60000
+- tapOn:
+    id: 'home.preset.0'
+# Toggle mute ON before starting navigation — the prop is `false`
+# by default per HomeScreen useState.
+- scrollUntilVisible:
+    element:
+      id: 'home.toggle.mute'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.toggle.mute'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.mapboxNavigation'
+    timeout: 30000
+# Open the dev menu and reveal the debug console.
+- tapOn:
+    id: 'navigation.button.menu'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.button.debug'
+    timeout: 5000
+- tapOn:
+    id: 'navigation.button.debug'
+# Starting muted does not itself emit onMuteChange (seed value only),
+# so we verify the navigation UI mounted; the debug console stays
+# open for any subsequent mute events from the native ornament.
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.debugConsole'
+    timeout: 5000

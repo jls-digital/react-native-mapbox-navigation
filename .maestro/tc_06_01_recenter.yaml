@@ -1,0 +1,52 @@
+appId: jlsdigital.reactnativemapboxnavigation.example
+name: TC-6.1 Recenter camera command
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: 'http://localhost:8081'
+    commands:
+      - tapOn: 'http://localhost:8081'
+- runFlow:
+    when:
+      visible: 'Continue'
+    commands:
+      - tapOn: 'Continue'
+# First-launch expo-dev-client shows its dev menu as a bottom sheet.
+# Tap the backdrop above the sheet to dismiss (iOS-style modal).
+- runFlow:
+    when:
+      visible: 'Fast refresh'
+    commands:
+      - tapOn:
+          point: '50%, 8%'
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 60000
+- tapOn:
+    id: 'home.preset.0'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.mapboxNavigation'
+    timeout: 30000
+# Open the collapsed dev menu, then tap the Recenter action.
+- tapOn:
+    id: 'navigation.button.menu'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.button.recenter'
+    timeout: 5000
+- tapOn:
+    id: 'navigation.button.recenter'
+# Menu collapses after the action fires.
+- assertNotVisible:
+    id: 'navigation.button.recenter'

@@ -1,0 +1,71 @@
+appId: jlsdigital.reactnativemapboxnavigation.example
+name: TC-9.5 Arrival → remount works (teardown on RN unmount)
+tags:
+  - lifecycle
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      visible: 'http://localhost:8081'
+    commands:
+      - tapOn: 'http://localhost:8081'
+- runFlow:
+    when:
+      visible: 'Continue'
+    commands:
+      - tapOn: 'Continue'
+- runFlow:
+    when:
+      visible: 'Fast refresh'
+    commands:
+      - tapOn:
+          point: '50%, 8%'
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 60000
+# ── First nav session — run to arrival ──────────────────
+- tapOn:
+    id: 'home.preset.0'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.mapboxNavigation'
+    timeout: 30000
+# Short route finishes in well under a minute; wait for the example
+# app's `onArrive`-triggered alert.
+- extendedWaitUntil:
+    visible: 'Arrived'
+    timeout: 120000
+- assertVisible: 'You have reached your destination.'
+# OK dismisses the alert and calls navigation.goBack() — that unmounts
+# the MapboxNavigation component WITHOUT the SDK's cancel button
+# firing. Pre-fix, teardown was hooked only into the SDK's dismiss
+# delegate, so the MapboxNavigationProvider stayed alive and the next
+# mount below tripped `checkInstanceIsUnique`.
+- tapOn: 'OK'
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 10000
+# ── Second nav session — proves arrival-path teardown ran ────────
+- tapOn:
+    id: 'home.preset.0'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.mapboxNavigation'
+    timeout: 30000

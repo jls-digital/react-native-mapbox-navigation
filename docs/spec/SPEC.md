@@ -256,11 +256,23 @@ The library must document this setup but never hardcode or bundle tokens.
 
 ### T9 — Lifecycle Management
 
-- Initialize Mapbox SDK resources when the component mounts
-- Tear down all resources (GPS listeners, audio sessions, observers) when the component unmounts
-- Teardown must be triggered by the native view's removal from the view hierarchy — not only by the `onCancelNavigation` callback. This covers scenarios where the consuming app removes the screen externally (e.g., React Navigation back-swipe, stack reset, or programmatic `navigation.goBack()`).
-- Pause GPS and rendering when the app goes to background; resume on foreground
-- No GPS drain when the component is not mounted
+- **Mount**: initialize Mapbox SDK resources (`MapboxNavigationProvider`, trip session, voice controller, arrival subscription) lazily on the first prop update — never in `init`, because Nitro's base init is not main-actor isolated.
+- **Unmount — SINGLE SOURCE OF TRUTH**: teardown MUST be driven by the native host view's removal from the view hierarchy, not by any JS-observable callback. Concretely: hook the host `UIView.didMoveToSuperview` (iOS) / `View.onDetachedFromWindow` (Android) and fire teardown when the view is detached after having been attached. This is the only signal that covers every unmount reason:
+  - user taps the SDK's built-in cancel / "close" button;
+  - user taps OK on a host-app "Arrived" alert that calls `navigation.goBack()`;
+  - a parent screen is popped, React Navigation resets the stack, or back-swipe is used;
+  - the host app conditionally renders away the `<MapboxNavigation />` element.
+  Hooking teardown only into the SDK's own dismiss delegate (e.g. iOS `NavigationViewControllerDelegate.navigationViewControllerDidDismiss`) is a bug — arrival-path unmounts never reach it.
+- **Teardown order (idempotent, synchronous, MainActor on iOS)**:
+  1. clear all Combine / Flow subscriptions (so no late arrival, progress, or reroute events are emitted after unmount began);
+  2. cancel in-flight route-calculation tasks;
+  3. remove the embedded `NavigationViewController` and its carrier from the parent VC hierarchy;
+  4. call `tripSession().setToIdle()` to stop GPS / audio / rendering;
+  5. release `mapboxNavigationProvider` (null the reference) so Mapbox's `checkInstanceIsUnique` does not trip when a new component instance mounts;
+  6. remove any auxiliary observers (e.g. UserDefaults observer for the mute ornament).
+- Releasing the provider only via ARC in `deinit` is not sufficient — RN can retain the hybrid instance past unmount, so a new mount can race an old provider. Explicit synchronous release in the unmount handler is required.
+- **Background / foreground**: pause GPS and rendering when the app backgrounds; resume on foreground. No GPS drain while the component is unmounted.
+- **Idempotency**: the teardown handler must be safe to call more than once (e.g. both the SDK's cancel delegate and the UIView detach hook may fire in the same session on some paths). Guard with an `isShuttingDown` flag.
 
 ### T10 — Event Throttling
 

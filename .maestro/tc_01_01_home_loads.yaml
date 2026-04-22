@@ -1,0 +1,68 @@
+appId: jlsdigital.reactnativemapboxnavigation.example
+name: TC-1.1 Home screen loads with presets
+tags:
+  - smoke
+---
+- launchApp:
+    clearState: true
+# Dev client lands on its server list first on fresh install.
+- runFlow:
+    when:
+      visible: 'http://localhost:8081'
+    commands:
+      - tapOn: 'http://localhost:8081'
+- runFlow:
+    when:
+      visible: 'Continue'
+    commands:
+      - tapOn: 'Continue'
+# First-launch expo-dev-client shows its dev menu as a bottom sheet.
+# Tap the backdrop above the sheet to dismiss (iOS-style modal).
+- runFlow:
+    when:
+      visible: 'Fast refresh'
+    commands:
+      - tapOn:
+          point: '50%, 8%'
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 60000
+- assertVisible: 'Mapbox Navigation Demo'
+- assertVisible:
+    id: 'home.preset.0'
+- assertVisible:
+    id: 'home.preset.1'
+- assertVisible:
+    id: 'home.preset.2'
+- assertVisible:
+    id: 'home.preset.3'
+- assertVisible:
+    id: 'home.preset.4'
+# Presets 5 and 6 are test-only error triggers (invalid coords,
+# unroutable destination). They're required by TC-7.3 and TC-7.4 and
+# live off-screen below the fold, so scroll to reach them.
+- scrollUntilVisible:
+    element:
+      id: 'home.preset.6'
+    direction: DOWN
+    timeout: 5000
+- assertVisible:
+    id: 'home.preset.5'
+- assertVisible:
+    id: 'home.preset.6'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- assertVisible:
+    id: 'home.startNavigation'
+- assertVisible:
+    id: 'home.toggle.simulation'
+- assertVisible:
+    id: 'home.toggle.mute'
+- assertVisible:
+    id: 'home.language.en'
+- assertVisible:
+    id: 'home.colorScheme.auto'

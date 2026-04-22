@@ -3,6 +3,22 @@
 > Natural-language E2E test case descriptions for Maestro flows.
 > Each test case describes a user journey through the example app.
 
+## Conventions
+
+- **Preset 0** in the example app is the short Zurich test route
+  (origin 47.37441, 8.53574 → waypoint 47.37375, 8.53410 →
+  destination 47.37335, 8.53422, total ~150m). Use this preset for
+  any test case that needs the simulated route to complete end-to-end
+  in a reasonable time — the iOS SDK has no public simulation speed
+  multiplier, so the full Zurich → Bern preset takes many minutes.
+- Preset indices: `0` = short test route, `1` = Zurich → Bern,
+  `2` = Zurich → Lucerne, `3` = Zurich → Bern via Lucerne (stop
+  waypoint), `4` = Zurich → Bern (silent waypoint).
+- Flows that require a specific permission state should either launch
+  with `clearState: true` (resets app data; TCC state survives on iOS)
+  or be preceded by `xcrun simctl privacy <udid> reset location
+  jlsdigital.reactnativemapboxnavigation.example`.
+
 ---
 
 ## 1. Basic Navigation Flow
@@ -13,7 +29,7 @@
 
 1. App opens on the Home screen.
 2. Verify the title "Mapbox Navigation Demo" is visible.
-3. Verify all 4 route preset buttons are visible: "Zurich → Bern", "Zurich → Lucerne", "Zurich → Bern via Lucerne", "Zurich → Bern (silent waypoint)".
+3. Verify 5 route preset buttons are visible: the short test route, "Zurich → Bern", "Zurich → Lucerne", "Zurich → Bern via Lucerne", "Zurich → Bern (silent waypoint)".
 4. Verify "Start Navigation" button is visible.
 5. Verify default settings: Simulate Route ON, Mute OFF, Language "English" selected, Color Scheme "auto" selected.
 
@@ -47,19 +63,19 @@
 
 **Preconditions:** Simulate Route is ON.
 
-1. Select "Zurich → Bern" and tap "Start Navigation".
+1. Select **preset 0** (short test route) and tap "Start Navigation".
 2. The simulated location moves along the route automatically.
-3. When the simulated driver reaches Bern, `onArrive` fires.
+3. When the simulated driver reaches the destination, `onArrive` fires.
 4. Verify an "Arrived" alert dialog appears with message "You have reached your destination."
 5. Tap "OK" in the alert.
 6. Verify the app navigates back to the Home screen.
 
 ### TC-2.2: Arrival event contains correct destination coordinates
 
-1. Start navigation with "Zurich → Bern" (simulation ON).
-2. Open the debug console (tap "Debug" button).
+1. Start navigation with **preset 0** (simulation ON).
+2. Open the debug console (via the dev-menu CTA).
 3. Wait for the simulated route to complete.
-4. Verify the debug log contains an arrival entry with coordinates matching Bern (≈46.9481, 7.4474).
+4. Verify the debug log contains an arrival entry with coordinates matching the short route's destination (≈47.3734, 8.5342).
 
 ---
 
@@ -86,7 +102,7 @@
 1. Select "Zurich → Bern" (no waypoints).
 2. Start navigation with simulation ON.
 3. Verify the route goes directly from Zurich to Bern.
-4. Verify arrival at Bern.
+4. Verify that after route calc, the native nav view mounts (arrival verification uses **preset 0** in TC-2.1 since the full Zurich → Bern drive is too long to run in a Maestro flow).
 
 ### TC-3.4: Route with many waypoints (stress test)
 
@@ -285,6 +301,52 @@
 2. Verify no crashes occur.
 3. Verify no memory leaks (app memory usage returns to baseline).
 4. Verify the Home screen remains responsive after the stress test.
+
+### TC-9.4: Cancel does not fire arrival; remount after cancel works
+
+**Regression test** for two bugs: (a) `onArrive` firing after the user
+cancelled navigation, because the `waypointsArrival` subscription kept
+receiving events; (b) starting a second navigation session crashing
+with Mapbox's `checkInstanceIsUnique` assertion because the previous
+`MapboxNavigationProvider` was still alive (released only when the RN
+component finalised, which lags unmount).
+
+1. Start navigation with **preset 0** (simulation ON).
+2. Wait for the `NavigationViewController` to mount and the simulator
+   to begin producing progress updates.
+3. Tap the SDK's built-in cancel button (accessibility label `close`)
+   in the bottom banner.
+4. Verify `onCancelNavigation` fires and the app navigates back to
+   Home.
+5. Verify NO "Arrived" alert appears — `onArrive` must not fire on
+   the cancel path.
+6. Immediately start navigation again with preset 0.
+7. Verify the second `NavigationViewController` mounts without
+   triggering `checkInstanceIsUnique`, proving the previous SDK
+   session was fully released by `tearDownNavigation()`.
+
+### TC-9.5: Arrival → remount works (teardown on RN unmount)
+
+**Regression test** that teardown fires on *any* JS-initiated unmount,
+not only when the SDK's own cancel button is tapped. On arrival the
+typical flow is `onArrive` → host app shows an alert → user taps OK →
+`navigation.goBack()`, which unmounts the `MapboxNavigation` component
+without ever triggering the SDK's `navigationViewControllerDidDismiss`
+delegate. If teardown is hooked only into that delegate, the
+`MapboxNavigationProvider` stays alive and the next mount trips
+`checkInstanceIsUnique`. Teardown must be hooked into the host
+UIView's lifecycle (see SPEC §T9).
+
+1. Start navigation with **preset 0** (simulation ON).
+2. Wait for the simulated route to complete and for the example app's
+   "Arrived" alert to appear (body: "You have reached your
+   destination.").
+3. Tap "OK" — the example app calls `navigation.goBack()`, which
+   unmounts the `MapboxNavigation` component.
+4. Verify the app returns to Home.
+5. Immediately start navigation again with preset 0.
+6. Verify the second `NavigationViewController` mounts without
+   triggering `checkInstanceIsUnique`.
 
 ---
 

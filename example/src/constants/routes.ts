@@ -11,13 +11,21 @@ export const CITIES: Record<string, Coordinates> = {
   geneva: { latitude: 46.2044, longitude: 6.1432 },
 };
 
-// ~500m within central Zurich — completes in ~30s with the default
-// iOS simulator speed (no public speed multiplier on iOS v3).
-// Intended for Maestro smoke tests.
-const ZURICH_HB: Coordinates = { latitude: 47.3784, longitude: 8.5402 };
-const ZURICH_BAHNHOFSTRASSE: Coordinates = {
-  latitude: 47.3726,
-  longitude: 8.5388,
+// ~150m within central Zurich (with one stop waypoint) — completes in
+// well under a minute with the default iOS simulator speed (no public
+// speed multiplier on iOS v3). Intended for Maestro smoke tests that
+// need to observe arrival without waiting for a full city-to-city drive.
+const ZURICH_SHORT_ORIGIN: Coordinates = {
+  latitude: 47.37441233663865,
+  longitude: 8.535740016744242,
+};
+const ZURICH_SHORT_WAYPOINT: Coordinates = {
+  latitude: 47.37374509815699,
+  longitude: 8.534102519548396,
+};
+const ZURICH_SHORT_DESTINATION: Coordinates = {
+  latitude: 47.37335312999324,
+  longitude: 8.534220636808888,
 };
 
 export interface RoutePreset {
@@ -29,9 +37,10 @@ export interface RoutePreset {
 
 export const ROUTE_PRESETS: RoutePreset[] = [
   {
-    label: 'Zurich HB → Bahnhofstrasse (short, for tests)',
-    origin: ZURICH_HB,
-    destination: ZURICH_BAHNHOFSTRASSE,
+    label: 'Zurich short (~150m, for tests)',
+    origin: ZURICH_SHORT_ORIGIN,
+    destination: ZURICH_SHORT_DESTINATION,
+    waypoints: [{ coordinate: ZURICH_SHORT_WAYPOINT }],
   },
   {
     label: 'Zurich → Bern',
@@ -54,5 +63,18 @@ export const ROUTE_PRESETS: RoutePreset[] = [
     origin: CITIES.zurich!,
     destination: CITIES.bern!,
     waypoints: [{ coordinate: CITIES.lucerne!, isSilent: true }],
+  },
+  {
+    // TC-7.3 — out-of-range lat/lon triggers INVALID_COORDINATES.
+    label: 'Invalid coordinates (out of range)',
+    origin: { latitude: 999, longitude: 999 },
+    destination: CITIES.bern!,
+  },
+  {
+    // TC-7.4 — middle of the Atlantic; Directions API returns no routes,
+    // classified as ROUTE_CALCULATION_FAILED.
+    label: 'Unroutable (ocean destination)',
+    origin: CITIES.zurich!,
+    destination: { latitude: 30, longitude: -40 },
   },
 ];
