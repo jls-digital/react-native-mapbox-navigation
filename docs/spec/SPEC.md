@@ -29,6 +29,15 @@ Support 0–200+ intermediate waypoints between origin and destination. The Mapb
 
 Detect and emit an event when the user physically arrives at the final destination.
 
+**Decoupling state reaction from dismissal:** `onArrive` is intentionally a *notification*, not a dismissal signal. After it fires, the Mapbox navigation UI stays mounted and the SDK's built-in end-of-trip UI (including the native "End Navigation" button) remains visible so the user gets the full visual arrival feedback.
+
+Consumers therefore have two distinct hooks:
+
+- `onArrive` — fires once on arrival. Use it for instant local-state updates (e.g. marking a delivery as completed). **Do not unmount the component here** if you want the user to see the native arrival UI.
+- `onNavigationEnd` — fires when the Mapbox SDK dismisses the navigation UI after a completed trip (the user tapped the native "End Navigation" button on the arrival screen). Use it to navigate back / unmount.
+
+`onCancelNavigation` continues to cover the separate "exited before arrival" case (U7 stop button). `onNavigationEnd` fires only on normal end-of-trip dismissal, never on cancel. After either of `onNavigationEnd` or `onCancelNavigation` fires, the native session is torn down and the consumer is expected to unmount the component.
+
 ### B4 — Voice Guidance
 
 Provide spoken turn-by-turn instructions. The library accepts a `language` prop to set the instruction language. Supported values correspond to the Mapbox Directions API and Voice API supported languages (see §8 for the full list and TypeScript type).
@@ -362,6 +371,7 @@ interface MapboxNavigationProps extends ViewProps {
   onArrive?: (event: ArriveEvent) => void;
   onError?: (event: ErrorEvent) => void;
   onCancelNavigation?: () => void;
+  onNavigationEnd?: () => void;
   onMuteChange?: (event: MuteChangeEvent) => void;
   onRouteProgressChange?: (event: RouteProgressEvent) => void;
   onLocationChange?: (event: LocationEvent) => void;
@@ -435,9 +445,10 @@ const ref = useRef<MapboxNavigationRef>(null);
   language="de"
   colorScheme="auto"
   mute={false}
-  onArrive={(e) => console.log('Arrived at', e.nativeEvent.destination)}
+  onArrive={(e) => markDeliveryComplete(e.nativeEvent.destination)}
   onError={(e) => console.error(e.nativeEvent.code, e.nativeEvent.message)}
   onCancelNavigation={() => navigation.goBack()}
+  onNavigationEnd={() => navigation.goBack()}
   onRouteProgressChange={(e) => updateProgress(e.nativeEvent)}
   style={{ flex: 1 }}
 />

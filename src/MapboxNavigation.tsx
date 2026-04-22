@@ -29,6 +29,7 @@ export const MapboxNavigation = forwardRef<
     onArrive,
     onError,
     onCancelNavigation,
+    onNavigationEnd,
     onMuteChange,
     onRouteProgressChange,
     onLocationChange,
@@ -82,6 +83,11 @@ export const MapboxNavigation = forwardRef<
     [onCancelNavigation]
   );
 
+  const wrappedOnNavigationEnd = useMemo(
+    () => (onNavigationEnd ? callback(onNavigationEnd) : undefined),
+    [onNavigationEnd]
+  );
+
   const wrappedOnMuteChange = useMemo(
     () =>
       onMuteChange
@@ -133,6 +139,7 @@ export const MapboxNavigation = forwardRef<
       onArrive={wrappedOnArrive}
       onError={wrappedOnError}
       onCancelNavigation={wrappedOnCancelNavigation}
+      onNavigationEnd={wrappedOnNavigationEnd}
       onMuteChange={wrappedOnMuteChange}
       onRouteProgressChange={wrappedOnRouteProgressChange}
       onLocationChange={wrappedOnLocationChange}

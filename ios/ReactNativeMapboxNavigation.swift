@@ -212,6 +212,9 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   var onCancelNavigation: (() -> Void)? {
     didSet { NSLog("\(logTag) onCancelNavigation assigned=\(onCancelNavigation != nil)") }
   }
+  var onNavigationEnd: (() -> Void)? {
+    didSet { NSLog("\(logTag) onNavigationEnd assigned=\(onNavigationEnd != nil)") }
+  }
   var onMuteChange: ((_ isMuted: Bool) -> Void)? {
     didSet { NSLog("\(logTag) onMuteChange assigned=\(onMuteChange != nil)") }
   }
@@ -587,6 +590,11 @@ extension HybridReactNativeMapboxNavigation: NavigationViewControllerDelegate {
     NSLog("\(logTag) navigationViewControllerDidDismiss canceled=\(canceled)")
     if canceled {
       onCancelNavigation?()
+    } else {
+      // Dismissed normally — user tapped the SDK's built-in "End Navigation"
+      // button on the arrival UI. Distinct from onCancelNavigation so JS can
+      // react to arrival (onArrive) without dismounting, then unmount here.
+      onNavigationEnd?()
     }
     // Detach synchronously regardless of arrival vs cancel so the late
     // arrival sink is gated (isShuttingDown) before any trailing tick

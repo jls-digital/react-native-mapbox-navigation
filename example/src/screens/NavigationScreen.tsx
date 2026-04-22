@@ -65,9 +65,10 @@ export function NavigationScreen({ navigation, route }: Props) {
           addLog(
             `Arrived at ${e.nativeEvent.destination.latitude.toFixed(4)}, ${e.nativeEvent.destination.longitude.toFixed(4)}`
           );
-          Alert.alert('Arrived', 'You have reached your destination.', [
-            { text: 'OK', onPress: () => navigation.goBack() },
-          ]);
+        }}
+        onNavigationEnd={() => {
+          addLog('Navigation ended');
+          navigation.goBack();
         }}
         onError={(e) => {
           addLog(`Error [${e.nativeEvent.code}]: ${e.nativeEvent.message}`);

@@ -26,6 +26,7 @@ class HybridReactNativeMapboxNavigation(val context: ThemedReactContext) : Hybri
   override var onArrive: ((destination: Coordinates) -> Unit)? = null
   override var onError: ((code: String, message: String) -> Unit)? = null
   override var onCancelNavigation: (() -> Unit)? = null
+  override var onNavigationEnd: (() -> Unit)? = null
   override var onMuteChange: ((isMuted: Boolean) -> Unit)? = null
   override var onRouteProgressChange: ((progress: RouteProgress) -> Unit)? = null
   override var onLocationChange: ((latitude: Double, longitude: Double) -> Unit)? = null
