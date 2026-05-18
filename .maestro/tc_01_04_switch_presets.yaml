@@ -5,22 +5,33 @@ name: TC-1.4 Switch between presets
     clearState: true
 - runFlow:
     when:
-      visible: 'http://localhost:8081'
+      visible:
+        text: 'http://(localhost|10\.0\.2\.2):8081'
     commands:
-      - tapOn: 'http://localhost:8081'
+      - tapOn:
+          text: 'http://(localhost|10\.0\.2\.2):8081'
 - runFlow:
     when:
       visible: 'Continue'
     commands:
       - tapOn: 'Continue'
-# First-launch expo-dev-client shows its dev menu as a bottom sheet.
-# Tap the backdrop above the sheet to dismiss (iOS-style modal).
+# First-launch expo-dev-client shows its dev menu after connecting.
+# iOS: tap backdrop above the bottom sheet to dismiss.
+# Android: the dev menu is full-screen; tap the Close (X) button top-right.
 - runFlow:
     when:
+      platform: iOS
       visible: 'Fast refresh'
     commands:
       - tapOn:
           point: '50%, 8%'
+- runFlow:
+    when:
+      platform: Android
+      visible: 'Fast Refresh'
+    commands:
+      - tapOn:
+          point: '94%, 9%'
 - extendedWaitUntil:
     visible:
       id: 'home.preset.0'

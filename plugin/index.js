@@ -48,6 +48,55 @@ const withMapboxAccessTokenAndroid = (config, props) => {
   });
 };
 
+// The Mapbox Navigation SDK is hosted on a private Maven repository that
+// requires basic auth with a downloads token. Inject the repo into the
+// app's project-level build.gradle so both the library and its transitive
+// Mapbox dependencies resolve. The token is read at build time from the
+// MAPBOX_DOWNLOADS_TOKEN Gradle property or environment variable.
+const ANDROID_MAPBOX_REPO_MARKER =
+  '// [react-native-mapbox-navigation] mapbox-maven-repo';
+const ANDROID_MAPBOX_REPO_SNIPPET = `
+  maven {
+    url 'https://api.mapbox.com/downloads/v2/releases/maven'
+    authentication { basic(BasicAuthentication) }
+    credentials {
+      username = 'mapbox'
+      def mbxDl = project.findProperty('MAPBOX_DOWNLOADS_TOKEN') ?: System.getenv('MAPBOX_DOWNLOADS_TOKEN')
+      if (mbxDl == null) {
+        throw new GradleException(
+          '[react-native-mapbox-navigation] MAPBOX_DOWNLOADS_TOKEN not found. ' +
+          'Set it in ~/.gradle/gradle.properties or the environment.'
+        )
+      }
+      password = mbxDl
+    }
+  }`;
+
+const withMapboxMavenRepoAndroid = (config) => {
+  return withDangerousMod(config, [
+    'android',
+    (cfg) => {
+      const buildGradlePath = path.join(
+        cfg.modRequest.platformProjectRoot,
+        'build.gradle'
+      );
+      if (!fs.existsSync(buildGradlePath)) return cfg;
+      const original = fs.readFileSync(buildGradlePath, 'utf8');
+      if (original.includes(ANDROID_MAPBOX_REPO_MARKER)) return cfg;
+
+      // Insert into the first allprojects { repositories { ... } } block.
+      const regex = /(allprojects\s*\{\s*repositories\s*\{)/;
+      if (!regex.test(original)) return cfg;
+      const updated = original.replace(
+        regex,
+        `$1\n    ${ANDROID_MAPBOX_REPO_MARKER}${ANDROID_MAPBOX_REPO_SNIPPET}\n`
+      );
+      fs.writeFileSync(buildGradlePath, updated);
+      return cfg;
+    },
+  ]);
+};
+
 // Inject a call to `react_native_mapbox_navigation_post_install(installer)`
 // into the generated Podfile's post_install block so the library's helper
 // (loaded by the podspec) runs during `pod install` and embeds Mapbox's
@@ -86,6 +135,7 @@ const withMapboxNavigation = (config, props) => {
   resolveAccessToken(props);
   config = withMapboxAccessTokenIOS(config, props);
   config = withMapboxAccessTokenAndroid(config, props);
+  config = withMapboxMavenRepoAndroid(config);
   config = withMapboxPodfilePostInstallCall(config);
   return config;
 };

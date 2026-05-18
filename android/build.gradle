@@ -26,6 +26,36 @@ buildscript {
   }
 }
 
+// Mapbox Navigation SDK is hosted on a private Maven repo authenticated with
+// MAPBOX_DOWNLOADS_TOKEN. Consumers must expose the token via a Gradle
+// property or environment variable (see README). The repository is registered
+// at the project level so the consuming app resolves transitive Mapbox
+// artifacts without needing to declare the repo itself.
+def mapboxDownloadsToken = {
+  def token = project.findProperty('MAPBOX_DOWNLOADS_TOKEN') ?: System.getenv('MAPBOX_DOWNLOADS_TOKEN')
+  if (!token) {
+    throw new GradleException(
+      "Mapbox downloads token not found. Set MAPBOX_DOWNLOADS_TOKEN in " +
+      "~/.gradle/gradle.properties or as an environment variable. See " +
+      "https://docs.mapbox.com/android/navigation/guides/install/"
+    )
+  }
+  return token
+}
+
+allprojects {
+  repositories {
+    maven {
+      url 'https://api.mapbox.com/downloads/v2/releases/maven'
+      authentication { basic(BasicAuthentication) }
+      credentials {
+        username = 'mapbox'
+        password = mapboxDownloadsToken()
+      }
+    }
+  }
+}
+
 def reactNativeArchitectures() {
   def value = rootProject.getProperties().get("reactNativeArchitectures")
   return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
@@ -36,6 +66,16 @@ apply plugin: "kotlin-android"
 apply from: '../nitrogen/generated/android/jlsdigital_reactnativemapboxnavigation+autolinking.gradle'
 
 apply plugin: "com.facebook.react"
+
+// Limit React Native codegen to this library's own JS root so the
+// build doesn't accidentally pull in and re-emit view-manager delegates
+// for every peer library in the consuming app (which would cause
+// duplicate-class errors during app dex merging).
+react {
+  jsRootDir = file("../src")
+  libraryName = "jlsdigital_reactnativemapboxnavigation"
+  codegenJavaPackageName = "com.margelo.nitro.jlsdigital.reactnativemapboxnavigation"
+}
 
 android {
   namespace "com.margelo.nitro.jlsdigital.reactnativemapboxnavigation"
@@ -115,4 +155,20 @@ android {
 dependencies {
   implementation "com.facebook.react:react-android"
   implementation project(":react-native-nitro-modules")
+
+  // Mapbox Navigation SDK v3
+  def mapboxNavVersion = '3.20.0'
+  implementation "com.mapbox.navigationcore:android:$mapboxNavVersion"
+  implementation "com.mapbox.navigationcore:ui-components:$mapboxNavVersion"
+  implementation "com.mapbox.navigationcore:ui-maps:$mapboxNavVersion"
+  implementation "com.mapbox.navigationcore:voice:$mapboxNavVersion"
+  implementation "com.mapbox.navigationcore:navigation:$mapboxNavVersion"
+
+  implementation "androidx.appcompat:appcompat:1.7.0"
+  // ConstraintLayout is a supertype of MapboxSoundButton + MapboxSpeedInfoView
+  // (Mapbox ui-components 3.x). Without it, Kotlin compilation can't resolve
+  // the supertype chain.
+  implementation "androidx.constraintlayout:constraintlayout:2.1.4"
+  implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.8.7"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
 }
