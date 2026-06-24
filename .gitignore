@@ -93,3 +93,7 @@ nitrogen/
 .env
 .env.*
 !.env.example
+# The Mapbox downloads token must come from ~/.gradle/gradle.properties or the
+# MAPBOX_DOWNLOADS_TOKEN env var (see android/build.gradle), never a tracked file.
+keys.properties
+android/keys.properties
