@@ -19,6 +19,14 @@ Pod::Spec.new do |s|
     "cpp/**/*.{hpp,cpp}",
   ]
 
+  # The off-device SwiftPM unit-test package lives under ios/Tests/ and must
+  # NOT be compiled into the pod: its Package.swift, its XCTest sources, and
+  # especially its resolved-dependency checkout under .build/ would otherwise
+  # be swept up by the ios/**/*.swift glob and break the app build.
+  s.exclude_files = [
+    "ios/Tests/**/*",
+  ]
+
   s.dependency 'React-jsi'
   s.dependency 'React-callinvoker'
 

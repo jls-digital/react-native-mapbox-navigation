@@ -7,109 +7,9 @@ import UIKit
 
 private let logTag = "[RNMapboxNav]"
 
-// ── MapboxProviderStore ────────────────────────────────
-// Process-wide cache for `MapboxNavigationProvider`. Mapbox's provider
-// is a deliberate singleton (guarded by `checkInstanceIsUnique`) and its
-// internal threadpool owns StyleManager — releasing it in the same
-// runloop turn as `setToIdle()` races with in-flight draw work and
-// segfaults. Keeping it alive across mounts sidesteps the race entirely:
-// unmount becomes "cancel subscriptions + detach nav VC + setToIdle()",
-// with no provider release at all.
-//
-// `CoreConfig` (locale + locationSource) is baked in at init — so if the
-// consumer toggles language or shouldSimulateRoute we drop the cached
-// provider and rebuild. That reintroduces the release race exactly once per
-// config swap, which is rare and gated by setToIdle(). The route origin is
-// deliberately NOT part of the config key: a new origin on a remount reuses
-// the cached provider rather than rebuilding it (see acquire/configKey).
-//
-// Refcounting: the shared provider is reference-counted by live holders
-// (acquire/release). `setToIdle()` only runs when the LAST holder
-// releases — so a second view mounting with a *different* configKey never
-// idles a still-mounted holder's live session (the bug this guards
-// against: a config-key change while another view is mid-navigation used
-// to call `setToIdle()` on the live shared provider). After the last
-// holder releases, the provider stays cached and idle so the next mount
-// with the same config reuses it without tripping `checkInstanceIsUnique`
-// or racing Mapbox's threadpool during release.
-//
-// `MapboxNavigationProvider` is effectively a process singleton
-// (`checkInstanceIsUnique` crashes on a second concurrent instance), so we
-// can never hold two live providers with different configs at once. Two
-// views mounted simultaneously must therefore share the same config
-// (locale + sim). A request for a *different* config while a
-// holder is still live is unsupportable by the SDK; rather than crash
-// (build a 2nd provider) or kill the sibling (idle+rebuild), we reuse the
-// existing provider and flag it. See TODO below.
-@MainActor
-final class MapboxProviderStore {
-  static let shared = MapboxProviderStore()
-  private var provider: MapboxNavigationProvider?
-  private var currentConfigKey: String?
-  // Number of live holders of the currently-cached provider. The provider
-  // is only idled when this drops to zero.
-  private var refCount = 0
-
-  private init() {}
-
-  func acquire(configKey: String, coreConfig: CoreConfig) -> MapboxNavigationProvider {
-    if let existing = provider, currentConfigKey == configKey {
-      refCount += 1
-      return existing
-    }
-    // A different config is requested than the one currently cached.
-    if let existing = provider, refCount > 0 {
-      // Another holder is still navigating with a different config. We
-      // cannot safely build a second provider (SDK singleton) nor idle
-      // this one (would kill the live session — the very bug we fix).
-      // Reuse the live provider and increment the refcount; the newcomer
-      // inherits the existing locale/sim/origin.
-      // TODO: support concurrent nav views with differing configs if the
-      // SDK ever drops the single-provider constraint. For now this is an
-      // unsupported combination — surface it loudly so it's caught in dev.
-      NSLog("\(logTag) MapboxProviderStore: WARNING requested config (\(configKey)) differs from live config (\(currentConfigKey ?? "nil")) while \(refCount) holder(s) active; reusing live provider (unsupported concurrent configs)")
-      refCount += 1
-      return existing
-    }
-    if provider != nil {
-      // A stale provider with no live holders. Idle it AND drop our strong
-      // ref BEFORE constructing the replacement: MapboxNavigationProvider's
-      // `checkInstanceIsUnique()` asserts (crashes) if a second instance is
-      // built while the first is still alive. We deliberately don't bind it
-      // to a local `let` — that would keep it alive across the init below.
-      NSLog("\(logTag) MapboxProviderStore: config changed (\(currentConfigKey ?? "nil") → \(configKey)) — releasing stale provider before rebuild")
-      provider?.mapboxNavigation.tripSession().setToIdle()
-      provider = nil
-      currentConfigKey = nil
-    }
-    let new = MapboxNavigationProvider(coreConfig: coreConfig)
-    provider = new
-    currentConfigKey = configKey
-    refCount = 1
-    return new
-  }
-
-  // Release a hold previously taken via `acquire`. When the LAST holder
-  // releases, idle the trip session but KEEP the provider cached and alive.
-  //
-  // We deliberately do NOT deallocate it here: Mapbox's provider owns a
-  // threadpool + StyleManager, and releasing it in the same runloop turn as
-  // `setToIdle()` races in-flight draw work and segfaults. Keeping it cached
-  // also lets the next mount with the same config reuse it (the common case —
-  // the configKey is stable across remounts), with no rebuild and no
-  // `checkInstanceIsUnique()` risk. A genuine config change (locale / sim
-  // toggle) is handled in `acquire`, which drops the stale provider before
-  // building the replacement.
-  func release(configKey: String) {
-    guard provider != nil, refCount > 0 else { return }
-    refCount -= 1
-    if refCount <= 0 {
-      refCount = 0
-      NSLog("\(logTag) MapboxProviderStore: last holder released (\(configKey)) — idling provider")
-      provider?.mapboxNavigation.tripSession().setToIdle()
-    }
-  }
-}
+// `MapboxProviderStore` (the process-wide refcounted provider cache) moved
+// to `MapboxProviderStore.swift`. Its pure refcount/config bookkeeping lives
+// in `ProviderStoreState` there so it can be unit-tested without the SDK.
 
 class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
@@ -356,12 +256,7 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     } else {
       locationSource = .live
     }
-    let locale: Locale
-    if let code = language, !code.isEmpty {
-      locale = Locale(identifier: code)
-    } else {
-      locale = .nationalizedCurrent
-    }
+    let locale = LocaleUnits.resolveLocale(language: language)
     // Disable proactive (faster-route) rerouting to preserve the
     // fixed-route invariant: the route must only change when the user
     // deviates, never spontaneously mid-trip because a faster path
@@ -391,7 +286,10 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     // which isn't worth forcing a provider rebuild (and the crash risk that
     // comes with it) on every new-origin reopen.
     let isSimulated = shouldSimulateRoute == true
-    let configKey = "sim=\(isSimulated)|locale=\(locale.identifier)"
+    let configKey = ProviderConfigKey.providerConfigKey(
+      simulated: isSimulated,
+      locale: locale
+    )
     let provider = MapboxProviderStore.shared.acquire(
       configKey: configKey,
       coreConfig: coreConfig
@@ -514,17 +412,25 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     }
   }
 
-  /// Outcome of a session-start attempt; drives whether afterUpdate retries.
-  private enum SessionStart { case started, retryable, terminal }
-
   /// Attempts to start the navigation session. `.started` once the route
   /// request is kicked off, `.terminal` for a precondition retrying can't fix
   /// (invalid coordinates), `.retryable` for a transient one (permission/GPS).
   @MainActor
   private func startSessionIfReady() -> SessionStart {
-    guard ensureCoordinatesValid() else { return .terminal }
-    guard ensureLocationAvailable() else { return .retryable }
-    guard ensureLocationPermission() else { return .retryable }
+    // Gather the three preconditions in precedence order, short-circuiting so
+    // a failing earlier check doesn't trigger the later checks' error
+    // emissions (matching the original guard chain). Each `ensure*` call
+    // emits its own de-duped onError as a side effect; the verdict itself is
+    // decided by the pure `SessionStartDecision`.
+    let coordsValid = ensureCoordinatesValid()
+    let locationAvailable = coordsValid && ensureLocationAvailable()
+    let permissionGranted = locationAvailable && ensureLocationPermission()
+    let decision = SessionStartDecision.decideSessionStart(
+      coordsValid: coordsValid,
+      locationAvailable: locationAvailable,
+      permissionGranted: permissionGranted
+    )
+    guard decision == .started else { return decision }
     lastPreconditionErrorCode = nil
     let nav = ensureMapboxNavigation()
     let waypointList = buildWaypoints()
@@ -594,26 +500,22 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
   @MainActor
   private func ensureCoordinatesValid() -> Bool {
-    func isValid(_ c: Coordinates) -> Bool {
-      c.latitude >= -90 && c.latitude <= 90 &&
-      c.longitude >= -180 && c.longitude <= 180 &&
-      !(c.latitude == 0 && c.longitude == 0)
-    }
-    if !isValid(origin) || !isValid(destination) {
-      emitPreconditionError(
-        "INVALID_COORDINATES",
-        "Origin or destination is outside the valid lat/lon range or is the default (0, 0)."
-      )
+    // Verdict (and the exact code/message to emit) comes from the pure
+    // `CoordinateValidation` unit; the god class only emits via onError.
+    let result = CoordinateValidation.validateCoordinates(
+      origin: (origin.latitude, origin.longitude),
+      destination: (destination.latitude, destination.longitude),
+      waypoints: (waypoints ?? []).map {
+        ($0.coordinate.latitude, $0.coordinate.longitude)
+      }
+    )
+    switch result {
+    case .ok:
+      return true
+    case .invalid(let code, let message):
+      emitPreconditionError(code, message)
       return false
     }
-    for (i, wp) in (waypoints ?? []).enumerated() where !isValid(wp.coordinate) {
-      emitPreconditionError(
-        "INVALID_COORDINATES",
-        "Waypoint #\(i + 1) coordinate is invalid."
-      )
-      return false
-    }
-    return true
   }
 
   private func buildWaypoints() -> [MapboxDirections.Waypoint] {
@@ -633,64 +535,11 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
   private func emitRouteError(_ error: Error) {
     let message = error.localizedDescription
-    let code = classifyRouteError(error)
+    // Classification moved to the pure `RouteErrorClassifier` unit (kept in
+    // lockstep with Android's `classifyRouterFailure`).
+    let code = RouteErrorClassifier.classifyRouteError(error)
     NSLog("\(logTag) route error code=\(code) message=\(message)")
     onError?(code, message)
-  }
-
-  // Classify a routing failure into one of the shared
-  // `MapboxNavigationErrorCode`s. Kept in lockstep with Android's
-  // `classifyRouterFailure` so the same failure yields the same code on
-  // both platforms. Android keys off the failure message substrings:
-  //   network/timeout/connection -> NETWORK_ERROR
-  //   auth/401/403               -> SDK_INIT_FAILED
-  //   input/invalid              -> INVALID_COORDINATES
-  //   else                       -> ROUTE_CALCULATION_FAILED
-  // iOS gets structured `DirectionsError` cases, so we map those directly
-  // and additionally apply the same substring heuristic to `.unknown`
-  // payloads (and any non-Directions error) for full parity — in
-  // particular so the routing path CAN emit INVALID_COORDINATES, which
-  // the previous implementation never did.
-  private func classifyRouteError(_ error: Error) -> String {
-    if let directionsError = error as? DirectionsError {
-      switch directionsError {
-      case .network:
-        return "NETWORK_ERROR"
-      case .invalidInput:
-        // Server rejected the request input — parity with Android's
-        // "input"/"invalid" -> INVALID_COORDINATES mapping.
-        return "INVALID_COORDINATES"
-      case .unknown(let response, _, _, let message):
-        if let http = response as? HTTPURLResponse,
-           http.statusCode == 401 || http.statusCode == 403 {
-          return "SDK_INIT_FAILED"
-        }
-        return classifyByMessage(message ?? directionsError.localizedDescription)
-      default:
-        return classifyByMessage(directionsError.localizedDescription)
-      }
-    }
-    if error is URLError {
-      return "NETWORK_ERROR"
-    }
-    return classifyByMessage(error.localizedDescription)
-  }
-
-  // Message-substring fallback mirroring Android's `classifyRouterFailure`
-  // (which only has the message to work with). Order matters: auth before
-  // the generic checks, matching Android.
-  private func classifyByMessage(_ message: String) -> String {
-    let msg = message.lowercased()
-    if msg.contains("network") || msg.contains("timeout") || msg.contains("connection") {
-      return "NETWORK_ERROR"
-    }
-    if msg.contains("auth") || msg.contains("401") || msg.contains("403") {
-      return "SDK_INIT_FAILED"
-    }
-    if msg.contains("input") || msg.contains("invalid") {
-      return "INVALID_COORDINATES"
-    }
-    return "ROUTE_CALCULATION_FAILED"
   }
 
   // ── Navigation UI mount ──────────────────────────────

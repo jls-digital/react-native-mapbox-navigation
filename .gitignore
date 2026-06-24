@@ -97,3 +97,6 @@ nitrogen/
 # MAPBOX_DOWNLOADS_TOKEN env var (see android/build.gradle), never a tracked file.
 keys.properties
 android/keys.properties
+
+# SwiftPM test package build artifacts
+ios/Tests/.build/
