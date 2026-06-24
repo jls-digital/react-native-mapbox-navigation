@@ -16,11 +16,12 @@ private let logTag = "[RNMapboxNav]"
 // unmount becomes "cancel subscriptions + detach nav VC + setToIdle()",
 // with no provider release at all.
 //
-// `CoreConfig` (locale + locationSource, including the simulation origin)
-// is baked in at init — so if the consumer toggles language,
-// shouldSimulateRoute, or the route origin, we drop the cached provider
-// and rebuild. That reintroduces the release race exactly once per config
-// swap, which is rare and gated by setToIdle().
+// `CoreConfig` (locale + locationSource) is baked in at init — so if the
+// consumer toggles language or shouldSimulateRoute we drop the cached
+// provider and rebuild. That reintroduces the release race exactly once per
+// config swap, which is rare and gated by setToIdle(). The route origin is
+// deliberately NOT part of the config key: a new origin on a remount reuses
+// the cached provider rather than rebuilding it (see acquire/configKey).
 //
 // Refcounting: the shared provider is reference-counted by live holders
 // (acquire/release). `setToIdle()` only runs when the LAST holder
@@ -36,7 +37,7 @@ private let logTag = "[RNMapboxNav]"
 // (`checkInstanceIsUnique` crashes on a second concurrent instance), so we
 // can never hold two live providers with different configs at once. Two
 // views mounted simultaneously must therefore share the same config
-// (locale + sim + origin). A request for a *different* config while a
+// (locale + sim). A request for a *different* config while a
 // holder is still live is unsupportable by the SDK; rather than crash
 // (build a 2nd provider) or kill the sibling (idle+rebuild), we reuse the
 // existing provider and flag it. See TODO below.
@@ -70,10 +71,16 @@ final class MapboxProviderStore {
       refCount += 1
       return existing
     }
-    if let old = provider {
-      // No live holders of the old provider — safe to idle and rebuild.
-      NSLog("\(logTag) MapboxProviderStore: config changed (\(currentConfigKey ?? "nil") → \(configKey)) — rebuilding")
-      old.mapboxNavigation.tripSession().setToIdle()
+    if provider != nil {
+      // A stale provider with no live holders. Idle it AND drop our strong
+      // ref BEFORE constructing the replacement: MapboxNavigationProvider's
+      // `checkInstanceIsUnique()` asserts (crashes) if a second instance is
+      // built while the first is still alive. We deliberately don't bind it
+      // to a local `let` — that would keep it alive across the init below.
+      NSLog("\(logTag) MapboxProviderStore: config changed (\(currentConfigKey ?? "nil") → \(configKey)) — releasing stale provider before rebuild")
+      provider?.mapboxNavigation.tripSession().setToIdle()
+      provider = nil
+      currentConfigKey = nil
     }
     let new = MapboxNavigationProvider(coreConfig: coreConfig)
     provider = new
@@ -82,9 +89,17 @@ final class MapboxProviderStore {
     return new
   }
 
-  // Release a hold previously taken via `acquire`. Only idles the cached
-  // provider when the last holder releases — preserving any other holder's
-  // live session.
+  // Release a hold previously taken via `acquire`. When the LAST holder
+  // releases, idle the trip session but KEEP the provider cached and alive.
+  //
+  // We deliberately do NOT deallocate it here: Mapbox's provider owns a
+  // threadpool + StyleManager, and releasing it in the same runloop turn as
+  // `setToIdle()` races in-flight draw work and segfaults. Keeping it cached
+  // also lets the next mount with the same config reuse it (the common case —
+  // the configKey is stable across remounts), with no rebuild and no
+  // `checkInstanceIsUnique()` risk. A genuine config change (locale / sim
+  // toggle) is handled in `acquire`, which drops the stale provider before
+  // building the replacement.
   func release(configKey: String) {
     guard provider != nil, refCount > 0 else { return }
     refCount -= 1
@@ -358,19 +373,21 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
       locationSource: locationSource,
       locale: locale
     )
-    // The config key must distinguish every input baked into CoreConfig.
-    // For a SIMULATED route the origin becomes the simulation
-    // `initialLocation`, so two simulated routes with the same locale but
-    // different origins must NOT share a cached provider (otherwise the
-    // second route replays from the first's origin). Origin is rounded to
-    // ~1e-5 deg (~1m) so insignificant jitter doesn't churn the cache.
-    // For LIVE routes the origin is not baked into CoreConfig (it comes
-    // from real GPS), so we omit it to keep cross-mount provider reuse.
+    // The config key distinguishes the inputs that REQUIRE a different
+    // provider: locale and simulation mode. It must stay STABLE across
+    // remounts of the same logical config so open→close→open reuses the
+    // cached provider rather than rebuilding it (rebuilding a checked
+    // singleton while the old one is still alive trips
+    // `checkInstanceIsUnique()`).
+    //
+    // Origin is intentionally NOT part of the key. For a simulated route the
+    // origin seeds the simulation's `initialLocation`, but once the route is
+    // set and active guidance starts the simulator replays the new route —
+    // the seed only affects the puck position in the brief pre-route window,
+    // which isn't worth forcing a provider rebuild (and the crash risk that
+    // comes with it) on every new-origin reopen.
     let isSimulated = shouldSimulateRoute == true
-    let originKey = isSimulated
-      ? "|origin=" + String(format: "%.5f,%.5f", origin.latitude, origin.longitude)
-      : ""
-    let configKey = "sim=\(isSimulated)|locale=\(locale.identifier)\(originKey)"
+    let configKey = "sim=\(isSimulated)|locale=\(locale.identifier)"
     let provider = MapboxProviderStore.shared.acquire(
       configKey: configKey,
       coreConfig: coreConfig
