@@ -133,6 +133,10 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   private var cancellables = Set<AnyCancellable>()
   private var currentRoutes: NavigationRoutes?
   private var hasScheduledSessionStart = false
+  // Last precondition error code emitted this mount. A retryable precondition
+  // (permission/GPS) is re-checked on every afterUpdate, so de-dupe by code to
+  // avoid spamming onError with the same failure. Reset when a session starts.
+  private var lastPreconditionErrorCode: String?
   private var routeRequestTask: Task<Void, Never>?
 
   private let carrier = UIViewController()
@@ -492,26 +496,36 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   nonisolated private func scheduleSessionStart() {
     Task { @MainActor [weak self] in
       guard let self, !self.hasScheduledSessionStart else { return }
-      // Only latch the flag once preconditions actually pass and the
-      // session starts. A precondition failure on this tick (permission
-      // not yet granted, GPS off, coords still defaulting to 0,0) must NOT
-      // permanently block start — otherwise a later prop update that fixes
-      // the precondition would early-return forever. `startSessionIfReady`
-      // returns whether it started; we only set the flag on success so a
-      // later `afterUpdate()` retries.
-      self.hasScheduledSessionStart = self.startSessionIfReady()
+      // Latch once the attempt reaches a definitive outcome:
+      //  - started   → session is up; never re-run.
+      //  - terminal  → a precondition retrying can't fix (invalid coords).
+      //    Latch so the error doesn't re-fire on every afterUpdate; if the
+      //    host re-renders in response (e.g. an error popup) that feedback
+      //    loop would otherwise spam onError and the UI can't recover.
+      //  - retryable → transient (permission pending, GPS off): leave
+      //    unlatched so a later update can proceed once it's resolved;
+      //    emitPreconditionError de-dupes so the retry doesn't spam onError.
+      switch self.startSessionIfReady() {
+      case .started, .terminal:
+        self.hasScheduledSessionStart = true
+      case .retryable:
+        break
+      }
     }
   }
 
-  /// Attempts to start the navigation session. Returns `true` once the
-  /// route request has been kicked off (preconditions met), `false` if a
-  /// precondition failed and the caller should retry on a later update.
+  /// Outcome of a session-start attempt; drives whether afterUpdate retries.
+  private enum SessionStart { case started, retryable, terminal }
+
+  /// Attempts to start the navigation session. `.started` once the route
+  /// request is kicked off, `.terminal` for a precondition retrying can't fix
+  /// (invalid coordinates), `.retryable` for a transient one (permission/GPS).
   @MainActor
-  @discardableResult
-  private func startSessionIfReady() -> Bool {
-    guard ensureCoordinatesValid() else { return false }
-    guard ensureLocationAvailable() else { return false }
-    guard ensureLocationPermission() else { return false }
+  private func startSessionIfReady() -> SessionStart {
+    guard ensureCoordinatesValid() else { return .terminal }
+    guard ensureLocationAvailable() else { return .retryable }
+    guard ensureLocationPermission() else { return .retryable }
+    lastPreconditionErrorCode = nil
     let nav = ensureMapboxNavigation()
     let waypointList = buildWaypoints()
     NSLog("\(logTag) requesting route with \(waypointList.count) waypoints")
@@ -532,7 +546,19 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
         }
       }
     }
-    return true
+    return .started
+  }
+
+  /// Emit a precondition error at most once per distinct code per mount.
+  /// scheduleSessionStart re-checks preconditions on every afterUpdate while
+  /// waiting on a retryable one (permission/GPS); without de-duping, the same
+  /// onError would fire each tick and — if the host re-renders in response —
+  /// spam the UI.
+  @MainActor
+  private func emitPreconditionError(_ code: String, _ message: String) {
+    if lastPreconditionErrorCode == code { return }
+    lastPreconditionErrorCode = code
+    onError?(code, message)
   }
 
   @MainActor
@@ -541,7 +567,7 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     switch manager.authorizationStatus {
     case .notDetermined, .restricted, .denied:
       NSLog("\(logTag) location permission not granted")
-      onError?(
+      emitPreconditionError(
         "GPS_PERMISSION_DENIED",
         "Location permission not granted. The app needs location permission to navigate."
       )
@@ -559,7 +585,7 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
       return true
     }
     NSLog("\(logTag) location services disabled")
-    onError?(
+    emitPreconditionError(
       "GPS_UNAVAILABLE",
       "Location services are disabled on this device. Enable Location Services in Settings."
     )
@@ -574,14 +600,14 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
       !(c.latitude == 0 && c.longitude == 0)
     }
     if !isValid(origin) || !isValid(destination) {
-      onError?(
+      emitPreconditionError(
         "INVALID_COORDINATES",
         "Origin or destination is outside the valid lat/lon range or is the default (0, 0)."
       )
       return false
     }
     for (i, wp) in (waypoints ?? []).enumerated() where !isValid(wp.coordinate) {
-      onError?(
+      emitPreconditionError(
         "INVALID_COORDINATES",
         "Waypoint #\(i + 1) coordinate is invalid."
       )
