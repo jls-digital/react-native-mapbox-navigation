@@ -169,6 +169,10 @@ dependencies {
   // (Mapbox ui-components 3.x). Without it, Kotlin compilation can't resolve
   // the supertype chain.
   implementation "androidx.constraintlayout:constraintlayout:2.1.4"
+  // RecyclerView is a supertype of MapboxLaneGuidanceAdapter (lane guidance
+  // band). Pulled in transitively by ui-components, but listed explicitly so
+  // Kotlin can resolve the supertype chain.
+  implementation "androidx.recyclerview:recyclerview:1.3.2"
   implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.8.7"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
 }

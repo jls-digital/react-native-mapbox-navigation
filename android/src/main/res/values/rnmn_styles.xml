@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Lane-guidance turn-icon styling for MapboxLaneGuidanceAdapter, one per
+  color scheme.
+
+  The SDK ships a single style, MapboxStyleTurnIconManeuver, whose ACTIVE
+  lane color is `?attr/colorOnSecondary` — that resolves to ~white from the
+  Material theme and vanishes against the light banner background, so active
+  and inactive lanes look identical in light mode. We pin explicit colors
+  that contrast with each palette's banner background and select the matching
+  style from code (ManeuverBanner.applyPalette) rather than via a -night
+  resource qualifier, because colorScheme is driven explicitly by the JS prop
+  (ChromePalette.LIGHT / DARK), not by the device night configuration.
+
+    maneuverTurnIconColor       = active lane glyph
+    maneuverTurnIconShadowColor = inactive lane glyph
+
+  Colors mirror the banner text tones (bannerPrimaryText / a dimmed tone) in
+  each ChromePalette.
+-->
+<resources>
+  <style name="RnmnLaneTurnIconLight">
+    <item name="maneuverTurnIconColor">#111827</item>
+    <item name="maneuverTurnIconShadowColor">#BDBDBD</item>
+  </style>
+  <style name="RnmnLaneTurnIconDark">
+    <item name="maneuverTurnIconColor">#F9FAFB</item>
+    <item name="maneuverTurnIconShadowColor">#6B7280</item>
+  </style>
+</resources>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Mapbox's MapboxRecenterButton reads its base android: attrs (minHeight,
+  padding, elevation, background) via the View ctor's AttributeSet path
+  from MapboxStyleRecenterButton (extends MapboxStyleExtendableButton).
+  Its programmatic single-arg constructor skips initAttributes entirely,
+  so a code-created button collapses to 0×0. Inflate this layout instead
+  to get the canonical XML inflation path.
+-->
+<com.mapbox.navigation.ui.components.maps.camera.view.MapboxRecenterButton
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/MapboxStyleRecenterButton"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="bottom|start"
+    android:layout_marginStart="16dp"
+    android:layout_marginBottom="16dp"
+    android:visibility="invisible" />

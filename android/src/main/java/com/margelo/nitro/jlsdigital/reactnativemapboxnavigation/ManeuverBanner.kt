@@ -15,18 +15,23 @@ import androidx.appcompat.content.res.AppCompatResources
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.widget.ImageViewCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.mapbox.navigation.base.internal.maneuver.ManeuverTurnIcon
 import com.mapbox.navigation.base.trip.model.RouteProgress
 import com.mapbox.navigation.core.formatter.MapboxDistanceFormatter
 import com.mapbox.navigation.tripdata.maneuver.model.LaneIndicator
 import com.mapbox.navigation.tripdata.maneuver.model.Maneuver
+import com.mapbox.navigation.ui.components.maneuver.view.MapboxLaneGuidanceAdapter
 
 /**
  * Top maneuver banner.
  *
  * Layout: left column = SDK turn-arrow icon + distance-to-maneuver
  * underneath; right column = primary instruction (street name) +
- * optional secondary text; thin lane-arrow row below the primary row.
+ * optional secondary text; SDK lane-guidance band (a horizontal
+ * RecyclerView backed by `MapboxLaneGuidanceAdapter`) below the
+ * primary row, shown only when the next maneuver exposes lanes.
  *
  * The turn-arrow drawables ship in Mapbox's `tripdata` AAR (e.g.
  * `R.drawable.mapbox_ic_turn_left`). Their path fill references
@@ -41,7 +46,8 @@ internal class ManeuverBanner(context: Context) : LinearLayout(context) {
   private val instructionText: TextView
   private val distanceText: TextView
   private val secondaryText: TextView
-  private val laneRow: LinearLayout
+  private val laneRecycler: RecyclerView
+  private val laneAdapter: MapboxLaneGuidanceAdapter
   private val divider: View
   private var palette: ChromePalette = ChromePalette.LIGHT
   private var distanceFormatter: MapboxDistanceFormatter? = null
@@ -114,15 +120,25 @@ internal class ManeuverBanner(context: Context) : LinearLayout(context) {
       LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT
     ))
 
-    laneRow = LinearLayout(context).apply {
-      orientation = HORIZONTAL
+    // SDK lane guidance band — renders the same `mapbox_ic_turn_*` glyphs
+    // the SDK uses internally, populated from each maneuver's LaneIndicator
+    // list. The active/inactive glyph colors come from our own turn-icon
+    // style (not the SDK's MapboxStyleTurnIconManeuver, whose active color
+    // is ?colorOnSecondary ≈ white and vanishes on the light banner).
+    // `applyPalette` re-applies the matching light/dark style on scheme change.
+    laneAdapter = MapboxLaneGuidanceAdapter(context).apply {
+      updateStyle(R.style.RnmnLaneTurnIconLight)
+    }
+    laneRecycler = RecyclerView(context).apply {
+      layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
+      adapter = laneAdapter
       visibility = View.GONE
-      // Lane glyphs are visual-only; instructionText covers lane info verbally.
+      // Lane icons are visual-only; instructionText covers lane info verbally.
       importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
     }
-    addView(laneRow, LayoutParams(
+    addView(laneRecycler, LayoutParams(
       LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT
-    ).apply { topMargin = dp(8); marginStart = dp(72 + 16) })
+    ).apply { topMargin = dp(8) })
 
     divider = View(context)
     addView(divider, LayoutParams(LayoutParams.MATCH_PARENT, dp(1))
@@ -141,11 +157,13 @@ internal class ManeuverBanner(context: Context) : LinearLayout(context) {
       arrowIcon, ColorStateList.valueOf(p.bannerPrimaryText)
     )
     divider.setBackgroundColor(p.bannerDivider)
-    for (i in 0 until laneRow.childCount) {
-      val child = laneRow.getChildAt(i) as? TextView ?: continue
-      val active = child.tag as? Boolean ?: false
-      child.setTextColor(if (active) p.laneActive else p.laneInactive)
-    }
+    // Re-apply the lane glyph colors for the active scheme. updateStyle()
+    // calls notifyDataSetChanged() internally, so any lanes currently shown
+    // re-bind with the new colors immediately.
+    laneAdapter.updateStyle(
+      if (p == ChromePalette.DARK) R.style.RnmnLaneTurnIconDark
+      else R.style.RnmnLaneTurnIconLight
+    )
   }
 
   fun setDistanceFormatter(f: MapboxDistanceFormatter) {
@@ -219,39 +237,36 @@ internal class ManeuverBanner(context: Context) : LinearLayout(context) {
   }
 
   private fun renderLaneGuidance(lanes: List<LaneIndicator>?) {
-    laneRow.removeAllViews()
+    val wasVisible = laneRecycler.visibility == View.VISIBLE
     if (lanes.isNullOrEmpty()) {
-      laneRow.visibility = View.GONE
+      laneAdapter.removeLanes()
+      laneRecycler.visibility = View.GONE
+      if (wasVisible) forceContainerRelayout()
       return
     }
-    val endMarginPx = resources.dp(8)
-    lanes.forEach { lane ->
-      val active = lane.isActive
-      val glyph = laneGlyph(lane.activeDirection ?: lane.directions.firstOrNull())
-      val tv = TextView(context).apply {
-        text = glyph
-        setTextColor(if (active) palette.laneActive else palette.laneInactive)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
-        setTypeface(null, if (active) Typeface.BOLD else Typeface.NORMAL)
-        tag = active
-      }
-      laneRow.addView(tv, LayoutParams(
-        LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
-      ).apply { marginEnd = endMarginPx })
-    }
-    laneRow.visibility = View.VISIBLE
+    laneAdapter.addLanes(lanes)
+    laneRecycler.visibility = View.VISIBLE
+    if (!wasVisible) forceContainerRelayout()
   }
 
-  private fun laneGlyph(direction: String?): String = when (direction) {
-    "left" -> "↰"
-    "slight left" -> "↖"
-    "sharp left" -> "⬉"
-    "right" -> "↱"
-    "slight right" -> "↗"
-    "sharp right" -> "⬈"
-    "straight" -> "↑"
-    "uturn" -> "↩"
-    else -> "↑"
+  /**
+   * React Native's hosted view tree swallows `requestLayout()` propagating
+   * up from our children, so toggling the lane row's visibility (or any
+   * height change inside this banner) never triggers the parent
+   * `LinearLayout`'s onMeasure — leaving inner views measured at 0 height.
+   * Re-run measure+layout on the container with its current fixed bounds
+   * to redistribute children heights (banner grows, map's weight=1 child
+   * shrinks correspondingly).
+   */
+  private fun forceContainerRelayout() {
+    val container = parent as? LinearLayout ?: return
+    val w = container.width
+    val h = container.height
+    if (w <= 0 || h <= 0) return
+    val ws = View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY)
+    val hs = View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY)
+    container.measure(ws, hs)
+    container.layout(container.left, container.top, container.right, container.bottom)
   }
 
   private fun formatDistance(meters: Double): String {

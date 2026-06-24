@@ -17,7 +17,6 @@ internal data class ChromePalette(
   val dockBg: Int, val dockPrimaryText: Int, val dockSecondaryText: Int,
   val durationText: Int, val arrivedText: Int, val closeIconTint: Int,
   val ornamentBg: Int, val ornamentIconTint: Int,
-  val laneActive: Int, val laneInactive: Int,
   val speedLimitOutline: Int, val speedLimitBg: Int, val speedLimitText: Int
 ) {
   companion object {
@@ -35,8 +34,6 @@ internal data class ChromePalette(
       closeIconTint = Color.parseColor("#6B7280"),
       ornamentBg = Color.parseColor("#FFFFFF"),
       ornamentIconTint = Color.parseColor("#374151"),
-      laneActive = Color.parseColor("#111827"),
-      laneInactive = Color.parseColor("#BDBDBD"),
       speedLimitOutline = Color.parseColor("#DC2626"),
       speedLimitBg = Color.parseColor("#FFFFFF"),
       speedLimitText = Color.parseColor("#111827")
@@ -55,8 +52,6 @@ internal data class ChromePalette(
       closeIconTint = Color.parseColor("#9CA3AF"),
       ornamentBg = Color.parseColor("#374151"),
       ornamentIconTint = Color.parseColor("#F9FAFB"),
-      laneActive = Color.parseColor("#F9FAFB"),
-      laneInactive = Color.parseColor("#6B7280"),
       speedLimitOutline = Color.parseColor("#EF4444"),
       speedLimitBg = Color.parseColor("#1F2937"),
       speedLimitText = Color.parseColor("#F9FAFB")

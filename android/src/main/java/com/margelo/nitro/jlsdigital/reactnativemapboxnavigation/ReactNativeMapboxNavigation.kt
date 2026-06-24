@@ -19,6 +19,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.LifecycleOwner
 import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.uimanager.ThemedReactContext
@@ -30,8 +31,11 @@ import com.mapbox.maps.MapView
 import com.mapbox.maps.plugin.compass.compass
 import com.mapbox.maps.plugin.scalebar.scalebar
 import com.mapbox.maps.Style
+import com.mapbox.android.gestures.MoveGestureDetector
 import com.mapbox.maps.plugin.animation.MapAnimationOptions
 import com.mapbox.maps.plugin.animation.camera
+import com.mapbox.maps.plugin.gestures.OnMoveListener
+import com.mapbox.maps.plugin.gestures.gestures
 import com.mapbox.maps.plugin.locationcomponent.OnIndicatorPositionChangedListener
 import com.mapbox.maps.plugin.locationcomponent.createDefault2DPuck
 import com.mapbox.maps.plugin.locationcomponent.location
@@ -100,7 +104,9 @@ private const val TAG = "RNMapboxNav"
  *  - `MapboxAudioGuidance` handles voice + mute
  *  - [ManeuverBanner] shows the upcoming maneuver
  *  - [TripPanel] shows ETA + remaining distance + close button
- *  - [OrnamentStack] floats recenter + mute on the right edge
+ *  - [OrnamentStack] floats the mute toggle on the right edge
+ *  - [com.mapbox.navigation.ui.components.maps.camera.view.MapboxRecenterButton]
+ *    sits bottom-start, shown only when the camera is not following
  *  - SDK MapboxSpeedInfoView floats the posted-speed badge
  *
  * Mirrors the iOS implementation (`ios/ReactNativeMapboxNavigation.swift`)
@@ -149,6 +155,7 @@ class HybridReactNativeMapboxNavigation(
   private var maneuverBanner: ManeuverBanner? = null
   private var tripPanel: TripPanel? = null
   private var ornamentStack: OrnamentStack? = null
+  private var recenterButton: com.mapbox.navigation.ui.components.maps.camera.view.MapboxRecenterButton? = null
   private var speedLimitView: com.mapbox.navigation.ui.components.speedlimit.view.MapboxSpeedInfoView? = null
   private var currentPalette: ChromePalette = ChromePalette.LIGHT
 
@@ -274,6 +281,7 @@ class HybridReactNativeMapboxNavigation(
     maneuverBanner = null
     tripPanel = null
     ornamentStack = null
+    recenterButton = null
     speedLimitView = null
     speedInfoApi = null
     distanceFormatterOptions = null
@@ -453,7 +461,34 @@ class HybridReactNativeMapboxNavigation(
         followingPadding = edgeInsetsFor(topDp = 180, bottomDp = 220, sideDp = 40)
       }
       viewportDataSource = vds
-      navigationCamera = NavigationCamera(mv.mapboxMap, mv.camera, vds)
+      val cam = NavigationCamera(mv.mapboxMap, mv.camera, vds)
+      navigationCamera = cam
+      // NavigationCamera has no built-in gesture handling — a user pan
+      // doesn't transition it to IDLE on its own, so the viewport data
+      // source keeps yanking the camera back on every location tick.
+      // Hook the map's gesture plugin and drop to IDLE on move-begin.
+      mv.gestures.addOnMoveListener(object : OnMoveListener {
+        override fun onMoveBegin(detector: MoveGestureDetector) {
+          navigationCamera?.requestNavigationCameraToIdle()
+        }
+        override fun onMove(detector: MoveGestureDetector): Boolean = false
+        override fun onMoveEnd(detector: MoveGestureDetector) = Unit
+      })
+      // Show the Resume/Recenter pill when the camera is not following the
+      // puck (user panned, or overview engaged); hide it while following.
+      cam.registerNavigationCameraStateChangeObserver { state ->
+        val rb = recenterButton ?: return@registerNavigationCameraStateChangeObserver
+        // Use INVISIBLE rather than GONE for the hidden state: GONE removes
+        // the view from layout, and React Native swallows the requestLayout
+        // that setVisibility(VISIBLE) emits — so the view never gets a fresh
+        // measure pass and stays at 0×0. INVISIBLE keeps it laid out (the
+        // pill occupies a small fixed area off the map's visible content)
+        // so toggling visibility is a pure invalidate, no layout needed.
+        val hidden = hasArrivedAtDestination ||
+          state == com.mapbox.navigation.ui.maps.camera.state.NavigationCameraState.FOLLOWING ||
+          state == com.mapbox.navigation.ui.maps.camera.state.NavigationCameraState.TRANSITION_TO_FOLLOWING
+        rb.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+      }
 
       val lineApiOpts = MapboxRouteLineApiOptions.Builder()
         .vanishingRouteLineEnabled(true)
@@ -493,7 +528,6 @@ class HybridReactNativeMapboxNavigation(
 
     val ornaments = OrnamentStack(
       context,
-      onRecenter = { recenterCamera() },
       onMute = {
         val audio = MapboxAudioGuidance.getRegisteredInstance()
         if (lastKnownMuted) audio.unmute() else audio.mute()
@@ -534,6 +568,20 @@ class HybridReactNativeMapboxNavigation(
       leftMargin = dp(16)
     })
     speedLimitView = speed
+
+    // Native Mapbox recenter pill — shown only when NavigationCamera is not
+    // following (user panned or overview engaged). Inflated from XML so
+    // the canonical `style="@style/MapboxStyleRecenterButton"` attribute
+    // is honored, including the base `android:minHeight` / padding /
+    // elevation from the extendable-button parent style. Code-only
+    // construction goes through the single-arg ctor which skips the
+    // SDK's `initAttributes` and produces a 0×0 view.
+    val recenter = android.view.LayoutInflater.from(context).inflate(
+      R.layout.mb_recenter_button, parent, false
+    ) as com.mapbox.navigation.ui.components.maps.camera.view.MapboxRecenterButton
+    recenter.setOnClickListener { recenterCamera() }
+    parent.addView(recenter)
+    recenterButton = recenter
   }
 
   private fun edgeInsetsFor(topDp: Int, bottomDp: Int, sideDp: Int): EdgeInsets {
@@ -746,8 +794,12 @@ class HybridReactNativeMapboxNavigation(
 
   private val routeProgressObserver = RouteProgressObserver { progress ->
     if (isShuttingDown) return@RouteProgressObserver
-    viewportDataSource?.onRouteProgressChanged(progress)
-    viewportDataSource?.evaluate()
+    // After arrival, stop feeding the viewport data source so NavigationCamera
+    // settles instead of fighting our easeTo / re-framing every tick.
+    if (!hasArrivedAtDestination) {
+      viewportDataSource?.onRouteProgressChanged(progress)
+      viewportDataSource?.evaluate()
+    }
     routeLineApi?.updateWithRouteProgress(progress) { expected ->
       loadedStyle?.let { routeLineView?.renderRouteLineUpdate(it, expected) }
     }
@@ -807,24 +859,29 @@ class HybridReactNativeMapboxNavigation(
         location = loc,
         keyPoints = locationMatcherResult.keyPoints
       )
+      // Freeze camera work after arrival: any further evaluate() here races
+      // NavigationCamera's natural post-arrival framing and produces a
+      // visible oscillation between top-down and angled following.
+      if (hasArrivedAtDestination) return
       viewportDataSource?.onLocationChanged(loc)
       viewportDataSource?.evaluate()
       if (!firstLocationReceived) {
         firstLocationReceived = true
         navigationCamera?.requestNavigationCameraToFollowing()
+        // One-shot belt-and-braces: on first activation NavigationCamera
+        // occasionally stays at the seed zoom. Ease into a sensible
+        // following pose just once — after this the user may pan freely
+        // and the Resume pill takes over re-engaging following.
+        mapView?.camera?.easeTo(
+          CameraOptions.Builder()
+            .center(Point.fromLngLat(loc.longitude, loc.latitude))
+            .zoom(16.5).pitch(45.0)
+            .bearing(loc.bearing?.toDouble() ?: 0.0)
+            .build(),
+          MapAnimationOptions.mapAnimationOptions { duration(400) }
+        )
       }
-      // Belt-and-braces follow: NavigationCamera sometimes leaves the
-      // view stuck at the seed zoom on first activation.
-      mapView?.camera?.easeTo(
-        CameraOptions.Builder()
-          .center(Point.fromLngLat(loc.longitude, loc.latitude))
-          .zoom(16.5).pitch(45.0)
-          .bearing(loc.bearing?.toDouble() ?: 0.0)
-          .build(),
-        MapAnimationOptions.mapAnimationOptions { duration(400) }
-      )
 
-      if (hasArrivedAtDestination) return
       val lat = loc.latitude
       val lon = loc.longitude
       val prevLat = lastLat
@@ -906,10 +963,31 @@ class HybridReactNativeMapboxNavigation(
 
   private fun pushPalette() {
     currentPalette = resolvePalette()
+    // The library renders fullscreen / edge-to-edge: the container's top
+    // padding sits under the status bar and its background shows through the
+    // trip panel's rounded top corners + bottom inset. Tint it with the
+    // chrome surface color (bannerBg == dockBg in both palettes) so those
+    // exposed strips match the banner/dock instead of flashing the white RN
+    // root. The weight-1 map frame covers the middle, so this only paints
+    // those edges.
+    container.setBackgroundColor(currentPalette.dockBg)
     maneuverBanner?.applyPalette(currentPalette)
     tripPanel?.applyPalette(currentPalette)
     // MapboxSpeedInfoView handles its own styling via the SDK theme.
     ornamentStack?.applyPalette(currentPalette)
+    applyStatusBarAppearance()
+  }
+
+  /**
+   * Match the system status-bar icon tint to the scheme: dark icons on the
+   * light surface, light icons on the dark surface. Without this the icons
+   * keep their default (dark) appearance and disappear against the dark
+   * status-bar band painted by the container background in dark mode.
+   */
+  private fun applyStatusBarAppearance() {
+    val window = context.currentActivity?.window ?: return
+    WindowInsetsControllerCompat(window, window.decorView)
+      .isAppearanceLightStatusBars = !resolveDark()
   }
 
   // ── Helpers ──────────────────────────────────────────

@@ -10,35 +10,23 @@ import android.widget.LinearLayout
 import androidx.core.widget.ImageViewCompat
 
 /**
- * Vertical stack of floating round map ornaments on the right edge —
- * recenter on top, mute below. Both are 48dp (Android min touch
- * target). The mute icon swaps via `setMuted` driven by the
- * `MapboxAudioGuidance` state flow on the outer HybridView.
+ * Vertical stack of floating round map ornaments on the right edge.
+ * Currently holds only the mute toggle — the recenter affordance is the
+ * SDK's `MapboxRecenterButton`, mounted bottom-start and shown only when
+ * the camera is not following the puck. The mute icon swaps via
+ * `setMuted` driven by the `MapboxAudioGuidance` state flow on the outer
+ * HybridView.
  */
 internal class OrnamentStack(
   context: Context,
-  private val onRecenter: () -> Unit,
   private val onMute: () -> Unit
 ) : LinearLayout(context) {
-  private val recenterButton: ImageButton
   private val muteButton: ImageButton
-  private val recenterBg: GradientDrawable
   private val muteBg: GradientDrawable
 
   init {
     orientation = VERTICAL
     val size = resources.dp(48)
-    recenterBg = GradientDrawable().apply {
-      shape = GradientDrawable.OVAL
-      setColor(Color.WHITE)
-    }
-    recenterButton = ImageButton(context).apply {
-      background = recenterBg
-      setImageResource(R.drawable.ic_nav_recenter)
-      scaleType = ImageView.ScaleType.CENTER_INSIDE
-      contentDescription = "Recenter"
-      setOnClickListener { onRecenter() }
-    }
     muteBg = GradientDrawable().apply {
       shape = GradientDrawable.OVAL
       setColor(Color.WHITE)
@@ -50,16 +38,12 @@ internal class OrnamentStack(
       contentDescription = "Mute"
       setOnClickListener { onMute() }
     }
-    addView(recenterButton, LayoutParams(size, size))
-    addView(muteButton, LayoutParams(size, size).apply { topMargin = resources.dp(8) })
+    addView(muteButton, LayoutParams(size, size))
   }
 
   fun applyPalette(p: ChromePalette) {
-    recenterBg.setColor(p.ornamentBg)
     muteBg.setColor(p.ornamentBg)
-    val tint = ColorStateList.valueOf(p.ornamentIconTint)
-    ImageViewCompat.setImageTintList(recenterButton, tint)
-    ImageViewCompat.setImageTintList(muteButton, tint)
+    ImageViewCompat.setImageTintList(muteButton, ColorStateList.valueOf(p.ornamentIconTint))
   }
 
   fun setMuted(muted: Boolean) {
