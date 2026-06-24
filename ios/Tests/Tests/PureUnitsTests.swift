@@ -29,11 +29,17 @@ final class PureUnitsTests: XCTestCase {
       ("Invalid input provided", "INVALID_COORDINATES"),
       ("The input was malformed", "INVALID_COORDINATES"),
       ("invalid coordinate", "INVALID_COORDINATES"),
+      // unroutable (Mapbox NoRoute/NoSegment) → ROUTE_CALCULATION_FAILED.
+      // These beat the input/invalid check even when the message contains
+      // "input" — the real Atlantic-destination failure is the first row.
+      ("Could not find a matching segment for input coordinates", "ROUTE_CALCULATION_FAILED"),
+      ("No segment found near coordinate", "ROUTE_CALCULATION_FAILED"),
+      ("Unable to route to destination", "ROUTE_CALCULATION_FAILED"),
       // everything else → ROUTE_CALCULATION_FAILED
       ("Something unexpected went wrong", "ROUTE_CALCULATION_FAILED"),
       ("", "ROUTE_CALCULATION_FAILED"),
       ("No route found", "ROUTE_CALCULATION_FAILED"),
-      // precedence: network beats auth beats input
+      // precedence: network beats auth beats unroutable beats input
       ("network auth invalid", "NETWORK_ERROR"),
       ("auth invalid input", "SDK_INIT_FAILED"),
     ]

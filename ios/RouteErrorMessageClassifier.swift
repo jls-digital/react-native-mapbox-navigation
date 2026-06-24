@@ -8,11 +8,18 @@ import Foundation
 // `DirectionsError` types) delegates its message paths here.
 //
 // Parity contract with Android (same input substrings → same code):
-//   network/timeout/connection -> NETWORK_ERROR
-//   auth/401/403               -> SDK_INIT_FAILED
-//   input/invalid              -> INVALID_COORDINATES
-//   else                       -> ROUTE_CALCULATION_FAILED
-// Order matters: auth is checked before the generic input/invalid check.
+//   network/timeout/connection         -> NETWORK_ERROR
+//   auth/401/403                       -> SDK_INIT_FAILED
+//   no route / (matching) segment etc. -> ROUTE_CALCULATION_FAILED
+//   input/invalid                      -> INVALID_COORDINATES
+//   else                               -> ROUTE_CALCULATION_FAILED
+// Order matters: network before auth, auth before the unroutable check, and
+// the unroutable check BEFORE the generic input/invalid check. Mapbox's
+// "NoRoute"/"NoSegment" failures phrase themselves as e.g. "Could not find a
+// matching segment for input coordinates" — that contains "input" but is a
+// routing failure, not malformed input, so it must be caught first. (Genuinely
+// out-of-range coordinates never reach here: `CoordinateValidation` rejects
+// them before a route is ever requested.)
 enum RouteErrorMessageClassifier {
   static func classify(_ message: String) -> String {
     let msg = message.lowercased()
@@ -21,6 +28,10 @@ enum RouteErrorMessageClassifier {
     }
     if msg.contains("auth") || msg.contains("401") || msg.contains("403") {
       return "SDK_INIT_FAILED"
+    }
+    if msg.contains("no route") || msg.contains("no segment")
+      || msg.contains("matching segment") || msg.contains("unable to route") {
+      return "ROUTE_CALCULATION_FAILED"
     }
     if msg.contains("input") || msg.contains("invalid") {
       return "INVALID_COORDINATES"

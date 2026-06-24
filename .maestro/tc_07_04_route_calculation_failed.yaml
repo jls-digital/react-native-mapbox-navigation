@@ -49,18 +49,11 @@ tags:
     timeout: 60000
 # Preset index 6 is "Unroutable (ocean destination)" — see
 # example/src/constants/routes.ts. Mapbox Directions returns no routes for
-# this (valid) destination; the intended classification is
-# ROUTE_CALCULATION_FAILED, which iOS produces.
-#
-# FIXME(parity): on Android this currently FAILS — the SDK's failure message
-# is "Could not find a matching segment for input coordinates", and
-# RouteErrorClassifier.classifyRouterFailure matches the "input" substring
-# before the generic branch, mislabelling it INVALID_COORDINATES. iOS gets a
-# clean typed/message path and reports ROUTE_CALCULATION_FAILED, so the two
-# platforms disagree on the same scenario. The assertion below keeps the
-# correct expectation; fix Android's classifier (match no-route/no-segment
-# ahead of "input", or key off Mapbox's structured error code) rather than
-# weakening this test.
+# this (valid) destination; both platforms classify it as
+# ROUTE_CALCULATION_FAILED. Note the SDK's failure message on Android is
+# "Could not find a matching segment for input coordinates" — it contains
+# "input" but is a routing failure, so RouteErrorClassifier matches the
+# no-route/no-segment family ahead of the generic input/invalid branch.
 - tapOn:
     id: 'home.preset.6'
 - scrollUntilVisible:
