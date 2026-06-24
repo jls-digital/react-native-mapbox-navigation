@@ -11,8 +11,21 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   MapboxNavigation,
   type MapboxNavigationRef,
+  type MapboxNavigationErrorCode,
 } from '@jls-digital/react-native-mapbox-navigation';
 import type { RootStackParamList } from '../App';
+
+// Errors that mean navigation can never start — there's no route to show, so
+// leave the navigation screen once the user acknowledges. A consumer with
+// mid-navigation (non-fatal) error codes would exclude those here and stay.
+const FATAL_ERROR_CODES: readonly MapboxNavigationErrorCode[] = [
+  'ROUTE_CALCULATION_FAILED',
+  'GPS_UNAVAILABLE',
+  'GPS_PERMISSION_DENIED',
+  'NETWORK_ERROR',
+  'INVALID_COORDINATES',
+  'SDK_INIT_FAILED',
+];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Navigation'>;
 
@@ -71,11 +84,20 @@ export function NavigationScreen({ navigation, route }: Props) {
           navigation.goBack();
         }}
         onError={(e) => {
-          addLog(`Error [${e.nativeEvent.code}]: ${e.nativeEvent.message}`);
-          Alert.alert(
-            'Navigation Error',
-            `${e.nativeEvent.code}\n${e.nativeEvent.message}`
-          );
+          const { code, message } = e.nativeEvent;
+          addLog(`Error [${code}]: ${message}`);
+          // A fatal error means there's no navigation to show. Acknowledge,
+          // then leave the screen (matching onCancelNavigation / onNavigationEnd)
+          // instead of stranding the user on an empty nav view.
+          const isFatal = FATAL_ERROR_CODES.includes(code);
+          Alert.alert('Navigation Error', `${code}\n${message}`, [
+            {
+              text: 'OK',
+              onPress: () => {
+                if (isFatal) navigation.goBack();
+              },
+            },
+          ]);
         }}
         onCancelNavigation={() => {
           addLog('Navigation cancelled');
