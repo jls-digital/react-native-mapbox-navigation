@@ -27,6 +27,21 @@ internal class OrnamentStack(
   init {
     orientation = VERTICAL
     val size = resources.dp(48)
+    // TODO: The Mapbox ui-components AAR ships MapboxSoundButton for exactly
+    // this mute toggle and is the preferred SDK component per CLAUDE.md. We
+    // keep this custom ImageButton for now because MapboxSoundButton can't
+    // cleanly back the existing contract without device verification:
+    //  - it's a ConstraintLayout whose icon lives in an internal AppCompatImageView,
+    //    so our palette tint (ImageViewCompat on the button) and background tint
+    //    (ornamentBg/ornamentIconTint) don't map onto it directly;
+    //  - its mute()/unmute() toggle internal state (and return Boolean) rather
+    //    than offering a plain idempotent setMuted(Boolean) setter, and it
+    //    doesn't swap the "Mute"/"Unmute" contentDescription our Maestro flows
+    //    rely on;
+    //  - like other ui-components widgets it must be XML-inflated with its
+    //    MapboxStyleSound style (Trap 1) or it measures 0×0.
+    // Migrating means re-validating the icon swap + palette tint + onMute click
+    // on a device, so defer until that can be tested.
     muteBg = GradientDrawable().apply {
       shape = GradientDrawable.OVAL
       setColor(Color.WHITE)

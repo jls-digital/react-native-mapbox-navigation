@@ -16,30 +16,83 @@ private let logTag = "[RNMapboxNav]"
 // unmount becomes "cancel subscriptions + detach nav VC + setToIdle()",
 // with no provider release at all.
 //
-// `CoreConfig` (locale + locationSource) is baked in at init — so if the
-// consumer toggles language or shouldSimulateRoute, we drop the cached
-// provider and rebuild. That reintroduces the release race exactly once
-// per config swap, which is rare and gated by setToIdle().
+// `CoreConfig` (locale + locationSource, including the simulation origin)
+// is baked in at init — so if the consumer toggles language,
+// shouldSimulateRoute, or the route origin, we drop the cached provider
+// and rebuild. That reintroduces the release race exactly once per config
+// swap, which is rare and gated by setToIdle().
+//
+// Refcounting: the shared provider is reference-counted by live holders
+// (acquire/release). `setToIdle()` only runs when the LAST holder
+// releases — so a second view mounting with a *different* configKey never
+// idles a still-mounted holder's live session (the bug this guards
+// against: a config-key change while another view is mid-navigation used
+// to call `setToIdle()` on the live shared provider). After the last
+// holder releases, the provider stays cached and idle so the next mount
+// with the same config reuses it without tripping `checkInstanceIsUnique`
+// or racing Mapbox's threadpool during release.
+//
+// `MapboxNavigationProvider` is effectively a process singleton
+// (`checkInstanceIsUnique` crashes on a second concurrent instance), so we
+// can never hold two live providers with different configs at once. Two
+// views mounted simultaneously must therefore share the same config
+// (locale + sim + origin). A request for a *different* config while a
+// holder is still live is unsupportable by the SDK; rather than crash
+// (build a 2nd provider) or kill the sibling (idle+rebuild), we reuse the
+// existing provider and flag it. See TODO below.
 @MainActor
 final class MapboxProviderStore {
   static let shared = MapboxProviderStore()
   private var provider: MapboxNavigationProvider?
   private var currentConfigKey: String?
+  // Number of live holders of the currently-cached provider. The provider
+  // is only idled when this drops to zero.
+  private var refCount = 0
 
   private init() {}
 
   func acquire(configKey: String, coreConfig: CoreConfig) -> MapboxNavigationProvider {
     if let existing = provider, currentConfigKey == configKey {
+      refCount += 1
+      return existing
+    }
+    // A different config is requested than the one currently cached.
+    if let existing = provider, refCount > 0 {
+      // Another holder is still navigating with a different config. We
+      // cannot safely build a second provider (SDK singleton) nor idle
+      // this one (would kill the live session — the very bug we fix).
+      // Reuse the live provider and increment the refcount; the newcomer
+      // inherits the existing locale/sim/origin.
+      // TODO: support concurrent nav views with differing configs if the
+      // SDK ever drops the single-provider constraint. For now this is an
+      // unsupported combination — surface it loudly so it's caught in dev.
+      NSLog("\(logTag) MapboxProviderStore: WARNING requested config (\(configKey)) differs from live config (\(currentConfigKey ?? "nil")) while \(refCount) holder(s) active; reusing live provider (unsupported concurrent configs)")
+      refCount += 1
       return existing
     }
     if let old = provider {
+      // No live holders of the old provider — safe to idle and rebuild.
       NSLog("\(logTag) MapboxProviderStore: config changed (\(currentConfigKey ?? "nil") → \(configKey)) — rebuilding")
       old.mapboxNavigation.tripSession().setToIdle()
     }
     let new = MapboxNavigationProvider(coreConfig: coreConfig)
     provider = new
     currentConfigKey = configKey
+    refCount = 1
     return new
+  }
+
+  // Release a hold previously taken via `acquire`. Only idles the cached
+  // provider when the last holder releases — preserving any other holder's
+  // live session.
+  func release(configKey: String) {
+    guard provider != nil, refCount > 0 else { return }
+    refCount -= 1
+    if refCount <= 0 {
+      refCount = 0
+      NSLog("\(logTag) MapboxProviderStore: last holder released (\(configKey)) — idling provider")
+      provider?.mapboxNavigation.tripSession().setToIdle()
+    }
   }
 }
 
@@ -59,12 +112,19 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
   private var mapboxNavigationProvider: MapboxNavigationProvider?
   private var mapboxNavigation: MapboxNavigation?
+  // The config key under which we acquired the shared provider. Held so
+  // teardown releases the exact hold we took (refcount balance).
+  private var acquiredConfigKey: String?
   private var cancellables = Set<AnyCancellable>()
   private var currentRoutes: NavigationRoutes?
   private var hasScheduledSessionStart = false
   private var routeRequestTask: Task<Void, Never>?
 
   private let carrier = UIViewController()
+  // The exact host VC the carrier was added as a child of. Tracked so
+  // teardown removes the carrier from the SAME parent it was attached to,
+  // keeping addChild/removeFromParent balanced even across a host swap.
+  private weak var carrierHost: UIViewController?
   private var navigationViewController: NavigationViewController?
 
   // De-dup + post-arrival gate for location/progress emissions.
@@ -77,6 +137,11 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   // (no publisher), so we observe UserDefaults where the multiplexed
   // synthesizer persists it under a well-known key.
   private var lastKnownMuted: Bool = false
+  // Desired mute value. Set by the `mute` prop setter; applied immediately
+  // if the provider already exists, otherwise re-applied once the provider
+  // is created in `ensureMapboxNavigation`. This prevents a runtime mute
+  // change arriving before the provider exists from being dropped.
+  private var pendingMute: Bool?
   private var userDefaultsObserver: NSObjectProtocol?
   private static let multiplexedMutedKey =
     "com.mapbox.navigation.MultiplexedSpeechSynthesizer.isMuted"
@@ -122,12 +187,23 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
       navVC.removeFromParent()
     }
     navigationViewController = nil
+    // Remove the carrier from whatever VC it is actually a child of, so
+    // addChild/removeFromParent stay balanced even if the host changed
+    // since we attached. We tracked `carrierHost` at attach time; assert
+    // (via the parent check) that it still matches before removing.
     if carrier.parent != nil {
       carrier.willMove(toParent: nil)
       carrier.view.removeFromSuperview()
       carrier.removeFromParent()
     }
-    mapboxNavigation?.tripSession().setToIdle()
+    carrierHost = nil
+    // Release our hold on the shared provider. The store idles the trip
+    // session only when the LAST holder releases — so we never idle a
+    // still-mounted sibling's live session (refcounting, see store).
+    if let key = acquiredConfigKey {
+      MapboxProviderStore.shared.release(configKey: key)
+      acquiredConfigKey = nil
+    }
     mapboxNavigationProvider = nil
     mapboxNavigation = nil
     if let obs = userDefaultsObserver {
@@ -267,21 +343,48 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     } else {
       locale = .nationalizedCurrent
     }
+    // Disable proactive (faster-route) rerouting to preserve the
+    // fixed-route invariant: the route must only change when the user
+    // deviates, never spontaneously mid-trip because a faster path
+    // appeared. This is the v3 equivalent of v1's
+    // `navigationService.router.reroutesProactively = false`. Deviation-
+    // based rerouting stays enabled via the default `rerouteConfig`;
+    // setting `fasterRouteDetectionConfig` to nil disables only the
+    // faster-route mechanism. Matches the Android side (which likewise
+    // does not enable faster-route detection).
+    let routingConfig = RoutingConfig(fasterRouteDetectionConfig: nil)
     let coreConfig = CoreConfig(
+      routingConfig: routingConfig,
       locationSource: locationSource,
       locale: locale
     )
-    let configKey = "sim=\(shouldSimulateRoute == true)|locale=\(locale.identifier)"
+    // The config key must distinguish every input baked into CoreConfig.
+    // For a SIMULATED route the origin becomes the simulation
+    // `initialLocation`, so two simulated routes with the same locale but
+    // different origins must NOT share a cached provider (otherwise the
+    // second route replays from the first's origin). Origin is rounded to
+    // ~1e-5 deg (~1m) so insignificant jitter doesn't churn the cache.
+    // For LIVE routes the origin is not baked into CoreConfig (it comes
+    // from real GPS), so we omit it to keep cross-mount provider reuse.
+    let isSimulated = shouldSimulateRoute == true
+    let originKey = isSimulated
+      ? "|origin=" + String(format: "%.5f,%.5f", origin.latitude, origin.longitude)
+      : ""
+    let configKey = "sim=\(isSimulated)|locale=\(locale.identifier)\(originKey)"
     let provider = MapboxProviderStore.shared.acquire(
       configKey: configKey,
       coreConfig: coreConfig
     )
+    acquiredConfigKey = configKey
     mapboxNavigationProvider = provider
     mapboxNavigation = provider.mapboxNavigation
-    // Seed initial mute state. Runtime changes come through the `mute`
-    // prop setter or through the SDK's built-in mute ornament (observed
+    // Seed initial mute state. Prefer any pending value from a `mute` prop
+    // change that arrived before the provider existed; otherwise fall back
+    // to the current `mute` prop. Runtime changes after this come through
+    // the `mute` prop setter or the SDK's built-in mute ornament (observed
     // via UserDefaults, see `startObservingNativeMute`).
-    let initialMuted = (mute == true)
+    let initialMuted = pendingMute ?? (mute == true)
+    pendingMute = nil
     provider.routeVoiceController.speechSynthesizer.muted = initialMuted
     lastKnownMuted = initialMuted
     startObservingNativeMute()
@@ -290,7 +393,14 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
   @MainActor
   private func applyMute(_ newValue: Bool) {
-    guard let provider = mapboxNavigationProvider else { return }
+    guard let provider = mapboxNavigationProvider else {
+      // Provider not created yet — remember the desired value so
+      // `ensureMapboxNavigation` seeds it once the provider exists.
+      // Without this, a mute change arriving before first route fetch is
+      // silently lost.
+      pendingMute = newValue
+      return
+    }
     provider.routeVoiceController.speechSynthesizer.muted = newValue
     // Update last-known BEFORE firing so the UserDefaults notification
     // that follows this write is a no-op (prevents double-emit).
@@ -302,9 +412,18 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   @MainActor
   private func startObservingNativeMute() {
     guard userDefaultsObserver == nil else { return }
+    // The SDK's MultiplexedSpeechSynthesizer persists `muted` to
+    // `UserDefaults.standard` (key `multiplexedMutedKey`). Scope the
+    // observation to that exact instance via `object:` so writes to OTHER
+    // UserDefaults suites (named suites used by analytics SDKs, etc.) do
+    // not fire this observer at all. `didChangeNotification` carries no
+    // changed-key payload, so `syncNativeMuteIfChanged` still guards
+    // against unrelated standard-suite writes by comparing the actual
+    // muted value before emitting — but narrowing the suite removes the
+    // bulk of spurious wakeups during navigation.
     userDefaultsObserver = NotificationCenter.default.addObserver(
       forName: UserDefaults.didChangeNotification,
-      object: nil,
+      object: UserDefaults.standard,
       queue: .main
     ) { [weak self] _ in
       // Always trampoline to MainActor; the notification may arrive on a
@@ -330,28 +449,52 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     guard let navVC = navigationViewController else { return }
     switch colorScheme {
     case "light":
+      // Pin to day. Forcing a fixed style implicitly takes over from the
+      // automatic time-of-day switching.
+      navVC.automaticallyAdjustsStyleForTimeOfDay = false
       navVC.styleManager.applyStyle(type: .day)
     case "dark":
+      navVC.automaticallyAdjustsStyleForTimeOfDay = false
       navVC.styleManager.applyStyle(type: .night)
     default:
-      // "auto" / nil — StyleManager switches on sun position.
-      break
+      // "auto" / nil — restore the SDK's automatic day/night switching.
+      // `applyStyle(type:)` above pins `currentStyleType`, and the SDK
+      // exposes no public call to re-run the automatic evaluation, so:
+      //   1. re-enable the auto flag (forwards to styleManager + restarts
+      //      the sun-position timer), and
+      //   2. re-assign `styles` to itself — its `didSet` runs the
+      //      internal `applyStyle()` which, with the auto flag on and two
+      //      styles present, picks the time-of-day style now and refreshes
+      //      appearance. Without (2) the previously forced style would
+      //      stay pinned until the next sunrise/sunset boundary.
+      navVC.automaticallyAdjustsStyleForTimeOfDay = true
+      navVC.styleManager.styles = navVC.styleManager.styles
     }
   }
 
   nonisolated private func scheduleSessionStart() {
     Task { @MainActor [weak self] in
       guard let self, !self.hasScheduledSessionStart else { return }
-      self.hasScheduledSessionStart = true
-      self.startSessionIfReady()
+      // Only latch the flag once preconditions actually pass and the
+      // session starts. A precondition failure on this tick (permission
+      // not yet granted, GPS off, coords still defaulting to 0,0) must NOT
+      // permanently block start — otherwise a later prop update that fixes
+      // the precondition would early-return forever. `startSessionIfReady`
+      // returns whether it started; we only set the flag on success so a
+      // later `afterUpdate()` retries.
+      self.hasScheduledSessionStart = self.startSessionIfReady()
     }
   }
 
+  /// Attempts to start the navigation session. Returns `true` once the
+  /// route request has been kicked off (preconditions met), `false` if a
+  /// precondition failed and the caller should retry on a later update.
   @MainActor
-  private func startSessionIfReady() {
-    guard ensureCoordinatesValid() else { return }
-    guard ensureLocationAvailable() else { return }
-    guard ensureLocationPermission() else { return }
+  @discardableResult
+  private func startSessionIfReady() -> Bool {
+    guard ensureCoordinatesValid() else { return false }
+    guard ensureLocationAvailable() else { return false }
+    guard ensureLocationPermission() else { return false }
     let nav = ensureMapboxNavigation()
     let waypointList = buildWaypoints()
     NSLog("\(logTag) requesting route with \(waypointList.count) waypoints")
@@ -372,6 +515,7 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
         }
       }
     }
+    return true
   }
 
   @MainActor
@@ -451,22 +595,57 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     onError?(code, message)
   }
 
+  // Classify a routing failure into one of the shared
+  // `MapboxNavigationErrorCode`s. Kept in lockstep with Android's
+  // `classifyRouterFailure` so the same failure yields the same code on
+  // both platforms. Android keys off the failure message substrings:
+  //   network/timeout/connection -> NETWORK_ERROR
+  //   auth/401/403               -> SDK_INIT_FAILED
+  //   input/invalid              -> INVALID_COORDINATES
+  //   else                       -> ROUTE_CALCULATION_FAILED
+  // iOS gets structured `DirectionsError` cases, so we map those directly
+  // and additionally apply the same substring heuristic to `.unknown`
+  // payloads (and any non-Directions error) for full parity — in
+  // particular so the routing path CAN emit INVALID_COORDINATES, which
+  // the previous implementation never did.
   private func classifyRouteError(_ error: Error) -> String {
     if let directionsError = error as? DirectionsError {
       switch directionsError {
       case .network:
         return "NETWORK_ERROR"
-      case .unknown(let response, _, _, _):
-        if let http = response as? HTTPURLResponse, http.statusCode == 401 || http.statusCode == 403 {
+      case .invalidInput:
+        // Server rejected the request input — parity with Android's
+        // "input"/"invalid" -> INVALID_COORDINATES mapping.
+        return "INVALID_COORDINATES"
+      case .unknown(let response, _, _, let message):
+        if let http = response as? HTTPURLResponse,
+           http.statusCode == 401 || http.statusCode == 403 {
           return "SDK_INIT_FAILED"
         }
-        return "ROUTE_CALCULATION_FAILED"
+        return classifyByMessage(message ?? directionsError.localizedDescription)
       default:
-        return "ROUTE_CALCULATION_FAILED"
+        return classifyByMessage(directionsError.localizedDescription)
       }
     }
     if error is URLError {
       return "NETWORK_ERROR"
+    }
+    return classifyByMessage(error.localizedDescription)
+  }
+
+  // Message-substring fallback mirroring Android's `classifyRouterFailure`
+  // (which only has the message to work with). Order matters: auth before
+  // the generic checks, matching Android.
+  private func classifyByMessage(_ message: String) -> String {
+    let msg = message.lowercased()
+    if msg.contains("network") || msg.contains("timeout") || msg.contains("connection") {
+      return "NETWORK_ERROR"
+    }
+    if msg.contains("auth") || msg.contains("401") || msg.contains("403") {
+      return "SDK_INIT_FAILED"
+    }
+    if msg.contains("input") || msg.contains("invalid") {
+      return "INVALID_COORDINATES"
     }
     return "ROUTE_CALCULATION_FAILED"
   }
@@ -480,12 +659,21 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
     subscribeToArrival(navigation: provider.mapboxNavigation.navigation())
 
-    // NOTE: simulation is wired at the `MapboxNavigationProvider` level via
+    // Simulation is wired at the `MapboxNavigationProvider` level via
     // `CoreConfig.locationSource = .simulation(...)` (see `ensureMapboxNavigation`).
-    // `simulationSpeedMultiplier` is a JS API-parity placeholder — iOS v3 does
-    // not expose a public speed multiplier for the built-in simulator. Android
-    // uses `ReplayRouteOptions.maxSpeedMps`; we'll bridge an iOS equivalent
-    // once the SDK exposes one.
+    //
+    // TODO: simulationSpeedMultiplier is a no-op on iOS — no public API in
+    // Mapbox Navigation v3.20.x to set the simulation speed. The built-in
+    // simulator's speed control (`SimulatedLocationManager.speedMultiplier`)
+    // is `internal`, the `SimulatedLocationManagerWrapper` that drives the
+    // `.simulation` LocationSource is `private`, and there is no public
+    // accessor to the live simulated manager. The only public
+    // `speedMultiplier` lives on `HistoryReplayer` (history-trace replay,
+    // a different feature) and `TestHelper.Fixture` (test-only). Android
+    // uses `ReplayRouteOptions.maxSpeedMps`. Achieving parity here would
+    // require driving simulation through a custom `.custom(LocationClient)`
+    // that re-implements the simulator — out of scope for this fix.
+    // Revisit when the SDK exposes a public speed knob for `.simulation`.
 
     let navigationOptions = NavigationOptions(
       mapboxNavigation: provider.mapboxNavigation,
@@ -547,22 +735,35 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
 
   @MainActor
   private func embedCarrierIfNeeded() {
-    guard carrier.view.superview == nil else { return }
-    carrier.view.translatesAutoresizingMaskIntoConstraints = false
-    view.addSubview(carrier.view)
-    NSLayoutConstraint.activate([
-      carrier.view.topAnchor.constraint(equalTo: view.topAnchor),
-      carrier.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-      carrier.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-      carrier.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-    ])
+    if carrier.view.superview == nil {
+      carrier.view.translatesAutoresizingMaskIntoConstraints = false
+      view.addSubview(carrier.view)
+      NSLayoutConstraint.activate([
+        carrier.view.topAnchor.constraint(equalTo: view.topAnchor),
+        carrier.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        carrier.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+        carrier.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      ])
+    }
     // Attach carrier to the nearest UIViewController in the responder
     // chain so the NavigationViewController inherits a valid parent
-    // (safe areas, status bar, presentation context).
-    if carrier.parent == nil, let host = findHostViewController() {
-      host.addChild(carrier)
-      carrier.didMove(toParent: host)
+    // (safe areas, status bar, presentation context). Remember the exact
+    // host so teardown removes from the same parent (balanced
+    // addChild/removeFromParent). If the responder chain's host changed
+    // since we last attached (a host swap), move the carrier to the new
+    // host instead of leaving it stranded under the old one — always
+    // balancing each addChild with the matching removeFromParent.
+    guard let host = findHostViewController() else { return }
+    if let currentHost = carrierHost, currentHost === host {
+      return // already correctly parented
     }
+    if carrier.parent != nil {
+      carrier.willMove(toParent: nil)
+      carrier.removeFromParent()
+    }
+    host.addChild(carrier)
+    carrier.didMove(toParent: host)
+    carrierHost = host
   }
 
   @MainActor
@@ -614,23 +815,32 @@ extension HybridReactNativeMapboxNavigation: NavigationViewControllerDelegate {
     // got onArrive.
     guard !hasArrivedAtDestination else { return }
 
-    // De-duplicate: only emit when the map-matched location actually
-    // moved. This prevents a flood of identical updates when the user
-    // (or simulator) is stationary and matches SPEC T10's intent that
-    // observers fire on movement, not on a clock.
-    let coord = location.coordinate
-    if let last = lastReportedCoordinate,
-       distanceBetween(last, coord) < Self.locationChangedEpsilonMeters {
-      return
-    }
-    lastReportedCoordinate = coord
-
+    // Route progress (ETA / duration / distance remaining) must keep
+    // flowing on every tick regardless of movement — these still change
+    // while the user is stationary (e.g. stopped at a light: duration
+    // remaining keeps counting). Gating progress on the location epsilon
+    // froze the ETA whenever the map-matched position didn't move. Mirror
+    // Android, where onRouteProgressChange comes from the route-progress
+    // observer (movement-independent) and only onLocationChange is gated
+    // on distance moved.
     onRouteProgressChange?(RouteProgress(
       distanceTraveled: progress.distanceTraveled,
       distanceRemaining: progress.distanceRemaining,
       durationRemaining: progress.durationRemaining,
       fractionTraveled: progress.fractionTraveled
     ))
+
+    // De-duplicate the LOCATION callback only: emit it when the
+    // map-matched location actually moved. This prevents a flood of
+    // identical location updates when the user (or simulator) is
+    // stationary and matches SPEC T10's intent that location observers
+    // fire on movement, not on a clock.
+    let coord = location.coordinate
+    if let last = lastReportedCoordinate,
+       distanceBetween(last, coord) < Self.locationChangedEpsilonMeters {
+      return
+    }
+    lastReportedCoordinate = coord
     onLocationChange?(coord.latitude, coord.longitude)
   }
 

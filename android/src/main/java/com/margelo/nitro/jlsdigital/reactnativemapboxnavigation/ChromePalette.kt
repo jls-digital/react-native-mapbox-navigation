@@ -16,8 +16,7 @@ internal data class ChromePalette(
   val bannerDistanceText: Int, val bannerDivider: Int,
   val dockBg: Int, val dockPrimaryText: Int, val dockSecondaryText: Int,
   val durationText: Int, val arrivedText: Int, val closeIconTint: Int,
-  val ornamentBg: Int, val ornamentIconTint: Int,
-  val speedLimitOutline: Int, val speedLimitBg: Int, val speedLimitText: Int
+  val ornamentBg: Int, val ornamentIconTint: Int
 ) {
   companion object {
     val LIGHT = ChromePalette(
@@ -33,10 +32,7 @@ internal data class ChromePalette(
       arrivedText = Color.parseColor("#059669"),
       closeIconTint = Color.parseColor("#6B7280"),
       ornamentBg = Color.parseColor("#FFFFFF"),
-      ornamentIconTint = Color.parseColor("#374151"),
-      speedLimitOutline = Color.parseColor("#DC2626"),
-      speedLimitBg = Color.parseColor("#FFFFFF"),
-      speedLimitText = Color.parseColor("#111827")
+      ornamentIconTint = Color.parseColor("#374151")
     )
     val DARK = ChromePalette(
       bannerBg = Color.parseColor("#1F2937"),
@@ -51,10 +47,7 @@ internal data class ChromePalette(
       arrivedText = Color.parseColor("#34D399"),
       closeIconTint = Color.parseColor("#9CA3AF"),
       ornamentBg = Color.parseColor("#374151"),
-      ornamentIconTint = Color.parseColor("#F9FAFB"),
-      speedLimitOutline = Color.parseColor("#EF4444"),
-      speedLimitBg = Color.parseColor("#1F2937"),
-      speedLimitText = Color.parseColor("#F9FAFB")
+      ornamentIconTint = Color.parseColor("#F9FAFB")
     )
   }
 }

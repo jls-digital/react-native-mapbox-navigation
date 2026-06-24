@@ -16,6 +16,7 @@ import android.widget.TextView
 import androidx.core.widget.ImageViewCompat
 import com.mapbox.navigation.base.trip.model.RouteProgress
 import com.mapbox.navigation.tripdata.progress.model.TripProgressUpdateValue
+import java.util.Locale
 
 /**
  * Bottom dock — iOS-style:
@@ -172,9 +173,13 @@ internal class TripPanel(
     arrivalTimeText.text = ""
   }
 
+  // Hand-rolled metric fallbacks used only when the SDK has not yet handed us
+  // a TripProgressUpdateValue (whose .formatter already does locale + unit).
+  // Pin an explicit Locale so the "km" decimal separator is deterministic
+  // rather than the implicit device default.
   private fun formatDistance(meters: Double): String {
     if (meters < 1000) return "${meters.toInt()} m"
-    return String.format("%.1f km", meters / 1000.0)
+    return String.format(Locale.getDefault(), "%.1f km", meters / 1000.0)
   }
 
   private fun formatDuration(secs: Double): String {

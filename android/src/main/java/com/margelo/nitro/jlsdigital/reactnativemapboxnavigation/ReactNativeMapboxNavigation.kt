@@ -15,7 +15,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -23,6 +22,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.LifecycleOwner
 import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.uimanager.ThemedReactContext
+import com.mapbox.api.directions.v5.DirectionsCriteria
 import com.mapbox.api.directions.v5.models.RouteOptions
 import com.mapbox.geojson.Point
 import com.mapbox.maps.CameraOptions
@@ -41,7 +41,6 @@ import com.mapbox.maps.plugin.locationcomponent.createDefault2DPuck
 import com.mapbox.maps.plugin.locationcomponent.location
 import com.mapbox.navigation.base.ExperimentalPreviewMapboxNavigationAPI
 import com.mapbox.navigation.base.extensions.applyDefaultNavigationOptions
-import com.mapbox.navigation.base.extensions.applyLanguageAndVoiceUnitOptions
 import com.mapbox.navigation.base.formatter.DistanceFormatterOptions
 import com.mapbox.navigation.base.formatter.UnitType
 import com.mapbox.navigation.base.options.NavigationOptions
@@ -82,6 +81,8 @@ import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineApi
 import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineView
 import com.mapbox.navigation.ui.maps.route.line.model.MapboxRouteLineApiOptions
 import com.mapbox.navigation.ui.maps.route.line.model.MapboxRouteLineViewOptions
+import com.mapbox.navigation.ui.maps.camera.state.NavigationCameraState
+import com.mapbox.navigation.ui.maps.camera.state.NavigationCameraStateChangedObserver
 import com.mapbox.navigation.voice.api.MapboxAudioGuidance
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -89,6 +90,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicInteger
 
 private const val TAG = "RNMapboxNav"
 
@@ -118,6 +120,15 @@ private const val TAG = "RNMapboxNav"
 class HybridReactNativeMapboxNavigation(
   val context: ThemedReactContext
 ) : HybridReactNativeMapboxNavigationSpec() {
+
+  companion object {
+    // MapboxNavigationApp is a process-global singleton. With more than one
+    // navigation view mounted (or one remounting while another lingers), a
+    // single instance's teardown must NOT disable() the SDK out from under
+    // the others. Count instances that have completed setup and only
+    // disable() when the last one detaches.
+    private val activeInstanceCount = AtomicInteger(0)
+  }
 
   private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -165,6 +176,17 @@ class HybridReactNativeMapboxNavigation(
   private var routeLineApi: MapboxRouteLineApi? = null
   private var routeLineView: MapboxRouteLineView? = null
 
+  // Kept as fields so detachNavigationUI() can remove/unregister them before
+  // the MapView is nulled — otherwise they keep firing into a half-torn-down
+  // view (leak + post-detach crash). The MapView's gesture/location plugins
+  // and the NavigationCamera hold strong references to these until removed.
+  private var moveListener: OnMoveListener? = null
+  private var cameraStateObserver: NavigationCameraStateChangedObserver? = null
+
+  // Tracks whether THIS instance has incremented activeInstanceCount, so the
+  // decrement in detach is balanced exactly once even if setup never ran.
+  private var didIncrementActiveCount = false
+
   private var maneuverApi: MapboxManeuverApi? = null
   private var turnIconsApi: MapboxTurnIconsApi? = null
   private var tripProgressApi: MapboxTripProgressApi? = null
@@ -191,6 +213,14 @@ class HybridReactNativeMapboxNavigation(
   private var loadedStyle: Style? = null
   private var pendingRoutes: List<NavigationRoute>? = null
   private var replayRouteSession: ReplayRouteSession? = null
+
+  // Last SpeedInfoValue actually rendered into the speed badge. The location
+  // observer fires on every tick (~10 Hz) but the posted limit rarely
+  // changes; skip the render + synchronous measure/layout when unchanged.
+  // SpeedInfoValue is a data class, so equality covers posted speed, unit,
+  // and sign convention (the field that flips the MUTCD/Vienna layout).
+  private var lastRenderedSpeedInfo:
+    com.mapbox.navigation.tripdata.speedlimit.model.SpeedInfoValue? = null
 
   // ── Props ────────────────────────────────────────────
 
@@ -240,8 +270,11 @@ class HybridReactNativeMapboxNavigation(
 
   override fun afterUpdate() {
     if (hasScheduledSessionStart || isShuttingDown) return
-    hasScheduledSessionStart = true
-    startSessionIfReady()
+    // Only latch the flag once setup actually started. If a precondition is
+    // not yet met on this tick (permission still pending, GPS off, transient
+    // (0,0) coords), leave it false so a later prop re-render retries instead
+    // of being permanently blocked by an early-set flag.
+    hasScheduledSessionStart = startSessionIfReady()
   }
 
   override fun onDropView() = detachNavigationUI()
@@ -269,12 +302,32 @@ class HybridReactNativeMapboxNavigation(
       try { MapboxNavigationApp.unregisterObserver(it) } catch (_: Throwable) {}
     }
     replayRouteSession = null
+    // Unregister the map-plugin listeners + camera observer BEFORE nulling
+    // mapView. These are held by the MapView's gesture/location plugins and
+    // the NavigationCamera; if left attached they keep firing into the
+    // half-torn-down view (leak + post-detach crash).
+    mapView?.let { mv ->
+      moveListener?.let { try { mv.gestures.removeOnMoveListener(it) } catch (_: Throwable) {} }
+      try { mv.location.removeOnIndicatorPositionChangedListener(indicatorPositionListener) } catch (_: Throwable) {}
+    }
+    cameraStateObserver?.let { obs ->
+      try { navigationCamera?.unregisterNavigationCameraStateChangeObserver(obs) } catch (_: Throwable) {}
+    }
+    moveListener = null
+    cameraStateObserver = null
+    navigationCamera = null
+    viewportDataSource = null
     try { maneuverApi?.cancel() } catch (_: Throwable) {}
     maneuverApi = null
     turnIconsApi = null
     tripProgressApi = null
     routeLineApi?.cancel()
     routeLineView?.cancel()
+    // Null these after cancel() so the indicator listener's `?: return`
+    // guards stop it from calling into a cancelled API.
+    routeLineApi = null
+    routeLineView = null
+    loadedStyle = null
     container.removeAllViews()
     mapView = null
     mapFrame = null
@@ -284,12 +337,24 @@ class HybridReactNativeMapboxNavigation(
     recenterButton = null
     speedLimitView = null
     speedInfoApi = null
+    lastRenderedSpeedInfo = null
     distanceFormatterOptions = null
     scope.cancel()
-    // SPEC §T9: release the SDK singleton so re-mount can call setup()
-    // again without tripping `checkInstanceIsUnique`.
-    try { MapboxNavigationApp.disable() } catch (t: Throwable) {
-      Log.w(TAG, "MapboxNavigationApp.disable() threw: ${t.message}")
+    // SPEC §T9: release the SDK singleton so re-mount can call setup() again
+    // without tripping `checkInstanceIsUnique` — but ONLY when this is the
+    // last live instance. MapboxNavigationApp is process-global; disabling it
+    // while another navigation view is mounted (or remounting) would tear the
+    // SDK out from under it.
+    val remaining = if (didIncrementActiveCount) {
+      didIncrementActiveCount = false
+      activeInstanceCount.decrementAndGet()
+    } else {
+      activeInstanceCount.get()
+    }
+    if (remaining <= 0) {
+      try { MapboxNavigationApp.disable() } catch (t: Throwable) {
+        Log.w(TAG, "MapboxNavigationApp.disable() threw: ${t.message}")
+      }
     }
   }
 
@@ -305,10 +370,11 @@ class HybridReactNativeMapboxNavigation(
 
   // ── Session start ────────────────────────────────────
 
-  private fun startSessionIfReady() {
-    if (!ensureCoordinatesValid()) return
-    if (!ensureLocationAvailable()) return
-    if (!ensureLocationPermission()) return
+  /** @return true if setup actually started (all preconditions passed). */
+  private fun startSessionIfReady(): Boolean {
+    if (!ensureCoordinatesValid()) return false
+    if (!ensureLocationAvailable()) return false
+    if (!ensureLocationPermission()) return false
 
     ensureMapboxSetup()
     ensureTripDataApis()
@@ -319,6 +385,13 @@ class HybridReactNativeMapboxNavigation(
       replayRouteSession = session
       MapboxNavigationApp.registerObserver(session)
     }
+    // Count this instance as live exactly once so detach's decrement is
+    // balanced and only the last instance disables the SDK singleton.
+    if (!didIncrementActiveCount) {
+      didIncrementActiveCount = true
+      activeInstanceCount.incrementAndGet()
+    }
+    return true
   }
 
   private fun buildReplayRouteSession(): ReplayRouteSession {
@@ -447,61 +520,7 @@ class HybridReactNativeMapboxNavigation(
         .build()
     )
     mv.mapboxMap.loadStyle(initialStyle, Style.OnStyleLoaded { style ->
-      loadedStyle = style
-      mv.location.apply {
-        locationPuck = createDefault2DPuck(withBearing = true)
-        puckBearingEnabled = true
-        setLocationProvider(navigationLocationProvider)
-        enabled = true
-      }
-      mv.location.addOnIndicatorPositionChangedListener(indicatorPositionListener)
-
-      val vds = MapboxNavigationViewportDataSource(mv.mapboxMap).apply {
-        overviewPadding = edgeInsetsFor(topDp = 96, bottomDp = 160, sideDp = 40)
-        followingPadding = edgeInsetsFor(topDp = 180, bottomDp = 220, sideDp = 40)
-      }
-      viewportDataSource = vds
-      val cam = NavigationCamera(mv.mapboxMap, mv.camera, vds)
-      navigationCamera = cam
-      // NavigationCamera has no built-in gesture handling — a user pan
-      // doesn't transition it to IDLE on its own, so the viewport data
-      // source keeps yanking the camera back on every location tick.
-      // Hook the map's gesture plugin and drop to IDLE on move-begin.
-      mv.gestures.addOnMoveListener(object : OnMoveListener {
-        override fun onMoveBegin(detector: MoveGestureDetector) {
-          navigationCamera?.requestNavigationCameraToIdle()
-        }
-        override fun onMove(detector: MoveGestureDetector): Boolean = false
-        override fun onMoveEnd(detector: MoveGestureDetector) = Unit
-      })
-      // Show the Resume/Recenter pill when the camera is not following the
-      // puck (user panned, or overview engaged); hide it while following.
-      cam.registerNavigationCameraStateChangeObserver { state ->
-        val rb = recenterButton ?: return@registerNavigationCameraStateChangeObserver
-        // Use INVISIBLE rather than GONE for the hidden state: GONE removes
-        // the view from layout, and React Native swallows the requestLayout
-        // that setVisibility(VISIBLE) emits — so the view never gets a fresh
-        // measure pass and stays at 0×0. INVISIBLE keeps it laid out (the
-        // pill occupies a small fixed area off the map's visible content)
-        // so toggling visibility is a pure invalidate, no layout needed.
-        val hidden = hasArrivedAtDestination ||
-          state == com.mapbox.navigation.ui.maps.camera.state.NavigationCameraState.FOLLOWING ||
-          state == com.mapbox.navigation.ui.maps.camera.state.NavigationCameraState.TRANSITION_TO_FOLLOWING
-        rb.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
-      }
-
-      val lineApiOpts = MapboxRouteLineApiOptions.Builder()
-        .vanishingRouteLineEnabled(true)
-        .build()
-      // Standard style uses slot-based imports rather than the legacy
-      // `road-label-navigation` anchor — pin the route line to the SDK's
-      // "top" slot so it renders above the basemap road network.
-      val lineViewOpts = MapboxRouteLineViewOptions.Builder(context)
-        .slotName("top")
-        .build()
-      routeLineApi = MapboxRouteLineApi(lineApiOpts)
-      routeLineView = MapboxRouteLineView(lineViewOpts).apply { initializeLayers(style) }
-      pendingRoutes?.let { drawRouteLine(it); pendingRoutes = null }
+      onStyleLoaded(mv, style)
     })
 
     val panel = TripPanel(context) {
@@ -523,14 +542,110 @@ class HybridReactNativeMapboxNavigation(
     applySystemBarInsets()
   }
 
+  /**
+   * Re-establish everything that is bound to the loaded [Style], for BOTH the
+   * initial mount and a runtime style swap (colorScheme change).
+   *
+   * Loading a new style detaches the LocationComponent puck and drops all
+   * route-line layers, and leaves [loadedStyle] pointing at the old (now
+   * stale) style. A colorScheme change that just called `loadStyle(style)`
+   * without re-running this would make the puck and route vanish and the
+   * indicator listener render into a dead style — so this is shared by the
+   * mountUi load callback and applyColorScheme's load callback.
+   *
+   * The one-shot wiring (viewport data source, NavigationCamera, gesture +
+   * camera-state observers, route-line API/view construction) is created only
+   * the first time, guarded by [navigationCamera] being null — re-creating it
+   * on every reload would double-register listeners and reset the camera.
+   */
+  private fun onStyleLoaded(mv: MapView, style: Style) {
+    loadedStyle = style
+
+    // The puck binds to the style and is lost on every reload — re-apply it.
+    mv.location.apply {
+      locationPuck = createDefault2DPuck(withBearing = true)
+      puckBearingEnabled = true
+      setLocationProvider(navigationLocationProvider)
+      enabled = true
+    }
+
+    if (navigationCamera == null) {
+      // ── First load only: build the camera + listeners + route-line API ──
+      mv.location.addOnIndicatorPositionChangedListener(indicatorPositionListener)
+
+      val vds = MapboxNavigationViewportDataSource(mv.mapboxMap).apply {
+        overviewPadding = edgeInsetsFor(topDp = 96, bottomDp = 160, sideDp = 40)
+        followingPadding = edgeInsetsFor(topDp = 180, bottomDp = 220, sideDp = 40)
+      }
+      viewportDataSource = vds
+      val cam = NavigationCamera(mv.mapboxMap, mv.camera, vds)
+      navigationCamera = cam
+      // NavigationCamera has no built-in gesture handling — a user pan
+      // doesn't transition it to IDLE on its own, so the viewport data
+      // source keeps yanking the camera back on every location tick.
+      // Hook the map's gesture plugin and drop to IDLE on move-begin.
+      // Keep the listener in a field so detach can removeOnMoveListener it.
+      val mover = object : OnMoveListener {
+        override fun onMoveBegin(detector: MoveGestureDetector) {
+          navigationCamera?.requestNavigationCameraToIdle()
+        }
+        override fun onMove(detector: MoveGestureDetector): Boolean = false
+        override fun onMoveEnd(detector: MoveGestureDetector) = Unit
+      }
+      moveListener = mover
+      mv.gestures.addOnMoveListener(mover)
+      // Show the Resume/Recenter pill when the camera is not following the
+      // puck (user panned, or overview engaged); hide it while following.
+      // Keep the observer in a field so detach can unregister it.
+      val stateObserver = NavigationCameraStateChangedObserver { state ->
+        val rb = recenterButton ?: return@NavigationCameraStateChangedObserver
+        // Use INVISIBLE rather than GONE for the hidden state: GONE removes
+        // the view from layout, and React Native swallows the requestLayout
+        // that setVisibility(VISIBLE) emits — so the view never gets a fresh
+        // measure pass and stays at 0×0. INVISIBLE keeps it laid out (the
+        // pill occupies a small fixed area off the map's visible content)
+        // so toggling visibility is a pure invalidate, no layout needed.
+        val hidden = hasArrivedAtDestination ||
+          state == NavigationCameraState.FOLLOWING ||
+          state == NavigationCameraState.TRANSITION_TO_FOLLOWING
+        rb.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+      }
+      cameraStateObserver = stateObserver
+      cam.registerNavigationCameraStateChangeObserver(stateObserver)
+
+      val lineApiOpts = MapboxRouteLineApiOptions.Builder()
+        .vanishingRouteLineEnabled(true)
+        .build()
+      routeLineApi = MapboxRouteLineApi(lineApiOpts)
+      // Standard style uses slot-based imports rather than the legacy
+      // `road-label-navigation` anchor — pin the route line to the SDK's
+      // "top" slot so it renders above the basemap road network.
+      val lineViewOpts = MapboxRouteLineViewOptions.Builder(context)
+        .slotName("top")
+        .build()
+      routeLineView = MapboxRouteLineView(lineViewOpts)
+    }
+
+    // Layers are owned by the style, so (re)initialize them on every load,
+    // then redraw the current route into the fresh style.
+    routeLineView?.initializeLayers(style)
+    val routesToDraw = pendingRoutes ?: MapboxNavigationApp.current()?.getNavigationRoutes()
+    if (!routesToDraw.isNullOrEmpty()) drawRouteLine(routesToDraw)
+    pendingRoutes = null
+  }
+
   private fun mountMapOverlays(parent: FrameLayout) {
     val dp = { n: Int -> context.resources.dp(n) }
 
     val ornaments = OrnamentStack(
       context,
       onMute = {
-        val audio = MapboxAudioGuidance.getRegisteredInstance()
-        if (lastKnownMuted) audio.unmute() else audio.mute()
+        // getRegisteredInstance() throws if audio guidance isn't registered
+        // yet (tap before MapboxNavigationApp.setup()). Guard like applyMute.
+        if (MapboxNavigationApp.isSetup()) {
+          val audio = MapboxAudioGuidance.getRegisteredInstance()
+          if (lastKnownMuted) audio.unmute() else audio.mute()
+        }
       }
     )
     parent.addView(ornaments, FrameLayout.LayoutParams(
@@ -543,13 +658,22 @@ class HybridReactNativeMapboxNavigation(
     })
     ornamentStack = ornaments
 
-    // The SDK component renders MUTCD (US) or Vienna (EU) style based on
-    // the SpeedLimitSign in each SpeedInfoValue. Wrap in the Mapbox theme
-    // so the XML layout's `?attr/...` references resolve.
+    // The SDK component renders MUTCD (US) or Vienna (EU) style based on the
+    // SpeedLimitSign in each SpeedInfoValue. Inflate from XML with WRAP_CONTENT
+    // (R.layout.mb_speed_info_view) rather than forcing fixed dp dimensions on
+    // the widget — fixed dp is the documented anti-pattern (CLAUDE.md). The
+    // 0x0-on-first-attach problem here is Trap 2 (RN swallowing the
+    // requestLayout from the SDK's internal GONE->VISIBLE flip), handled by the
+    // per-tick parent re-measure in the location observer, not Trap 1. The
+    // inflated children reference `?attr/...` that only resolve against
+    // MapboxStyleSpeedLimit, so inflate with a LayoutInflater built from a
+    // ContextThemeWrapper carrying that theme.
     val themedCtx = androidx.appcompat.view.ContextThemeWrapper(
       context, com.mapbox.navigation.ui.components.R.style.MapboxStyleSpeedLimit
     )
-    val speed = com.mapbox.navigation.ui.components.speedlimit.view.MapboxSpeedInfoView(themedCtx)
+    val speed = android.view.LayoutInflater.from(themedCtx).inflate(
+      R.layout.mb_speed_info_view, parent, false
+    ) as com.mapbox.navigation.ui.components.speedlimit.view.MapboxSpeedInfoView
     speed.applyOptions(
       com.mapbox.navigation.ui.components.speedlimit.model.MapboxSpeedInfoOptions.Builder()
         .showUnit(true)
@@ -557,16 +681,7 @@ class HybridReactNativeMapboxNavigation(
         .showSpeedWhenUnavailable(false)
         .build()
     )
-    // SDK view's <merge> layout has both inner ConstraintLayouts as GONE
-    // until render() flips one. With WRAP_CONTENT the outer FrameLayout
-    // measures as 0x0 on first attach and never recovers when a child
-    // becomes VISIBLE. Force fixed dimensions sized for the MUTCD/Vienna
-    // sign content (64dp inner posted layout + padding).
-    parent.addView(speed, FrameLayout.LayoutParams(dp(76), dp(96)).apply {
-      gravity = Gravity.TOP or Gravity.START
-      topMargin = dp(16)
-      leftMargin = dp(16)
-    })
+    parent.addView(speed)
     speedLimitView = speed
 
     // Native Mapbox recenter pill — shown only when NavigationCamera is not
@@ -582,6 +697,25 @@ class HybridReactNativeMapboxNavigation(
     recenter.setOnClickListener { recenterCamera() }
     parent.addView(recenter)
     recenterButton = recenter
+  }
+
+  /**
+   * Trap 2 fix for the WRAP_CONTENT [speedLimitView]: re-measure + re-layout
+   * the fixed-bounds parent frame so the SDK's GONE->VISIBLE inner-layout flip
+   * (whose requestLayout RN swallows) takes effect. Mirrors
+   * [ManeuverBanner.forceContainerRelayout] but for the map's FrameLayout
+   * overlay. Measuring the parent (not the child) with EXACTLY its own bounds
+   * gives the WRAP_CONTENT child a fresh measure pass at its natural size.
+   */
+  private fun forceSpeedViewRelayout(speed: View) {
+    val container = speed.parent as? ViewGroup ?: return
+    val w = container.width
+    val h = container.height
+    if (w <= 0 || h <= 0) return
+    val ws = View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY)
+    val hs = View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY)
+    container.measure(ws, hs)
+    container.layout(container.left, container.top, container.right, container.bottom)
   }
 
   private fun edgeInsetsFor(topDp: Int, bottomDp: Int, sideDp: Int): EdgeInsets {
@@ -663,21 +797,24 @@ class HybridReactNativeMapboxNavigation(
       mapboxNavigation.registerRoutesObserver(routesObserver)
 
       val audio = MapboxAudioGuidance.getRegisteredInstance()
-      val initialMuted = mute == true
-      lastKnownMuted = initialMuted
+      lastKnownMuted = mute == true
       // MapboxAudioGuidance restores its persisted mute state from a
       // DataStore inside its own onAttached, which runs AFTER ours and
       // overwrites any synchronous mute()/unmute() we'd call here. Drive
       // the desired state through the stateFlow collector instead: once
       // the SDK emits its restored state, reconcile it against the prop.
+      // Read the prop live (not a captured snapshot) so a mute toggle that
+      // landed while !isSetup — applyMute() early-returns then — is still
+      // applied once setup completes, instead of being silently dropped.
       var initialReconciled = false
       muteJob = scope.launch {
         audio.stateFlow().collect { state ->
           if (isShuttingDown) return@collect
           if (!initialReconciled) {
             initialReconciled = true
-            if (state.isMuted != initialMuted) {
-              if (initialMuted) audio.mute() else audio.unmute()
+            val desiredMuted = mute == true
+            if (state.isMuted != desiredMuted) {
+              if (desiredMuted) audio.mute() else audio.unmute()
               return@collect
             }
           }
@@ -713,6 +850,14 @@ class HybridReactNativeMapboxNavigation(
         @Suppress("DEPRECATION") routerOrigin: String
       ) {
         if (isShuttingDown) return
+        // The SDK contract says onRoutesReady carries at least one route, but
+        // an empty list would crash on routes.first() below — treat it as a
+        // calculation failure rather than throwing NoSuchElementException.
+        val primaryRoute = routes.firstOrNull()
+        if (primaryRoute == null) {
+          onError?.invoke("ROUTE_CALCULATION_FAILED", "Route calculation returned no routes.")
+          return
+        }
         if (shouldSimulateRoute == true) {
           if (mapboxNavigation.getTripSessionState() != TripSessionState.STARTED) {
             mapboxNavigation.startReplayTripSession()
@@ -722,7 +867,7 @@ class HybridReactNativeMapboxNavigation(
         }
         mapboxNavigation.setNavigationRoutes(routes)
         if (loadedStyle != null) drawRouteLine(routes) else pendingRoutes = routes
-        viewportDataSource?.onRouteChanged(routes.first())
+        viewportDataSource?.onRouteChanged(primaryRoute)
         viewportDataSource?.evaluate()
         navigationCamera?.requestNavigationCameraToFollowing()
       }
@@ -757,12 +902,29 @@ class HybridReactNativeMapboxNavigation(
     }
     stopIndices.add(points.size - 1)
 
+    // Derive language + voice units from the prop language (resolveLocale()),
+    // NOT the device locale. The display distance formatter already uses
+    // resolveLocale()/unitTypeFor() in ensureTripDataApis(); SDK's
+    // applyLanguageAndVoiceUnitOptions(context) instead reads the device
+    // locale, so spoken units could disagree with the on-screen formatter.
+    // Set them explicitly here so both sides stay consistent. (This replaces
+    // both applyLanguageAndVoiceUnitOptions and the redundant second
+    // .language() call that previously followed it.)
+    val locale = resolveLocale()
+    val voiceUnits = when (unitTypeFor(locale)) {
+      UnitType.IMPERIAL -> DirectionsCriteria.IMPERIAL
+      UnitType.METRIC -> DirectionsCriteria.METRIC
+    }
+    // Use the locale's language code (e.g. "en", "de"), matching what the
+    // SDK extension would have inferred — Mapbox Directions' language field
+    // expects the bare ISO code, not a full BCP-47 tag like "en-US".
     val builder = RouteOptions.builder()
       .applyDefaultNavigationOptions()
-      .applyLanguageAndVoiceUnitOptions(context)
+      .language(locale.language)
+      .voiceInstructions(true)
+      .voiceUnits(voiceUnits)
       .coordinatesList(points)
       .waypointIndicesList(stopIndices)
-    language?.takeIf { it.isNotEmpty() }?.let { builder.language(it) }
     return builder.build()
   }
 
@@ -832,26 +994,28 @@ class HybridReactNativeMapboxNavigation(
       if (dfo != null) {
         val si = speedInfoApi?.updatePostedAndCurrentSpeed(locationMatcherResult, dfo)
         val slv = speedLimitView
-        if (si != null && slv != null) {
+        // Location ticks arrive ~10 Hz but the posted limit rarely changes.
+        // SpeedInfoValue is a data class, so this equality skips the render +
+        // synchronous measure/layout on every unchanged tick. It still fires
+        // whenever the posted speed, unit, or sign convention (MUTCD/Vienna)
+        // changes — including the convention flip that needs the relayout.
+        if (si != null && slv != null && si != lastRenderedSpeedInfo) {
+          lastRenderedSpeedInfo = si
           slv.render(si)
           // The SDK overlays the current speed in red below the posted
           // limit when over-speeding. iOS doesn't, so hide both to match.
           slv.speedInfoCurrentSpeedVienna.visibility = android.view.View.GONE
           slv.speedInfoCurrentSpeedMutcd.visibility = android.view.View.GONE
           // The SDK's render() flips the active MUTCD/Vienna child to
-          // VISIBLE, but inside RN's view tree the requestLayout from
-          // that visibility change does not propagate back through our
-          // host, so the active layout stays at 0x0. Force a synchronous
-          // measure+layout matching the parent-assigned dimensions.
-          val w = slv.width
-          val h = slv.height
-          if (w > 0 && h > 0) {
-            slv.measure(
-              android.view.View.MeasureSpec.makeMeasureSpec(w, android.view.View.MeasureSpec.EXACTLY),
-              android.view.View.MeasureSpec.makeMeasureSpec(h, android.view.View.MeasureSpec.EXACTLY)
-            )
-            slv.layout(slv.left, slv.top, slv.left + w, slv.top + h)
-          }
+          // VISIBLE, but inside RN's view tree the requestLayout from that
+          // visibility change does not propagate back through our host, so the
+          // speed view stays at its first (0x0) measurement. Re-measure the
+          // fixed-bounds parent frame (MATCH_PARENT, non-zero once attached)
+          // with EXACTLY its own bounds — that re-measures the WRAP_CONTENT
+          // speed-info child at its natural content size and re-lays it out.
+          // (Re-measuring slv itself with its own width/height as EXACTLY would
+          // pin it at 0x0 forever, since WRAP_CONTENT starts there.)
+          forceSpeedViewRelayout(slv)
         }
       }
       val loc = locationMatcherResult.enhancedLocation
@@ -936,15 +1100,22 @@ class HybridReactNativeMapboxNavigation(
   }
 
   private fun applyColorScheme() {
-    val mode = when (colorScheme) {
-      "light" -> AppCompatDelegate.MODE_NIGHT_NO
-      "dark" -> AppCompatDelegate.MODE_NIGHT_YES
-      else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
-    }
-    AppCompatDelegate.setDefaultNightMode(mode)
+    // NB: deliberately NOT calling AppCompatDelegate.setDefaultNightMode().
+    // That is a process-global side effect that recreates the host Activity
+    // and flips the entire host app's theme — unacceptable for a library, and
+    // never reverted. Our chrome colors come from pushPalette()/ChromePalette
+    // and the map theme from loadStyle(); resolveDark() reads Configuration's
+    // uiMode directly for the "auto" case, so palette resolution works without
+    // any global night-mode mutation.
     pushPalette()
+    val mv = mapView ?: return
     val style = if (resolveDark()) Style.DARK else Style.STANDARD
-    mapView?.mapboxMap?.loadStyle(style)
+    // Re-run the shared style-loaded setup so the LocationComponent puck and
+    // route-line layers are re-established into the new style (loadStyle drops
+    // them) and loadedStyle is refreshed — otherwise the puck and route vanish.
+    mv.mapboxMap.loadStyle(style, Style.OnStyleLoaded { loaded ->
+      onStyleLoaded(mv, loaded)
+    })
   }
 
   private fun resolveDark(): Boolean = when (colorScheme) {

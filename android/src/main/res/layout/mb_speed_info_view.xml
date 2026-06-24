@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MapboxSpeedInfoView's internal <merge> layout keeps both the Vienna and
+  MUTCD posted-limit ConstraintLayouts at android:visibility="gone" until
+  render() flips one to VISIBLE; the inner posted layouts have intrinsic
+  sizes (Vienna 64dp wide, MUTCD 70x70dp). The collapse to 0x0 on first
+  attach is React Native swallowing the requestLayout() that the GONE->VISIBLE
+  flip emits (Trap 2), NOT a skipped initAttributes (Trap 1) — so WRAP_CONTENT
+  is correct here, paired with the per-tick parent re-measure in the location
+  observer. Fixed dp dimensions on the widget are the documented anti-pattern.
+
+  The view's inflated children reference `?attr/...` that only resolve against
+  MapboxStyleSpeedLimit, so this layout MUST be inflated with a LayoutInflater
+  built from a ContextThemeWrapper(context, MapboxStyleSpeedLimit) — the plain
+  view ctor does not carry that theme.
+-->
+<com.mapbox.navigation.ui.components.speedlimit.view.MapboxSpeedInfoView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="top|start"
+    android:layout_marginStart="16dp"
+    android:layout_marginTop="16dp" />

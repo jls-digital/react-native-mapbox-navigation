@@ -23,6 +23,7 @@ import com.mapbox.navigation.core.formatter.MapboxDistanceFormatter
 import com.mapbox.navigation.tripdata.maneuver.model.LaneIndicator
 import com.mapbox.navigation.tripdata.maneuver.model.Maneuver
 import com.mapbox.navigation.ui.components.maneuver.view.MapboxLaneGuidanceAdapter
+import java.util.Locale
 
 /**
  * Top maneuver banner.
@@ -279,8 +280,12 @@ internal class ManeuverBanner(context: Context) : LinearLayout(context) {
       meters >= 100.0 -> Math.round(meters / 50.0) * 50.0
       else -> Math.round(meters / 25.0) * 25.0
     }
+    // Prefer the SDK formatter — it handles locale (decimal separator) and
+    // unit system (metric/imperial). Only hand-roll a metric fallback when no
+    // formatter has been injected yet, and even then pin an explicit Locale
+    // so the decimal separator is deterministic rather than the device default.
     distanceFormatter?.let { return it.formatDistance(rounded).toString() }
     if (rounded < 1000) return "${rounded.toInt()} m"
-    return String.format("%.1f km", rounded / 1000.0)
+    return String.format(Locale.getDefault(), "%.1f km", rounded / 1000.0)
   }
 }
