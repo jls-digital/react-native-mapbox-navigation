@@ -3,6 +3,14 @@ name: TC-5.2 Dark color scheme mounts nav view
 ---
 - launchApp:
     clearState: true
+# Fresh install: the dev-client renders its server list a beat after launch.
+# Wait for it (optional) so the conditional tap below isn't skipped by an
+# instantaneous visibility check that runs before the UI has drawn.
+- extendedWaitUntil:
+    visible:
+      text: 'http://(localhost|10\.0\.2\.2):8081'
+    timeout: 15000
+    optional: true
 - runFlow:
     when:
       visible:
@@ -30,8 +38,12 @@ name: TC-5.2 Dark color scheme mounts nav view
       platform: Android
       visible: 'Fast Refresh'
     commands:
-      - tapOn:
-          point: '94%, 9%'
+      # This dev-client renders the Android dev menu as a swipe-dismissable
+      # bottom sheet (Reload / Go home / Fast Refresh …), not a full-screen
+      # menu with a top-right X. Swipe it down to dismiss.
+      - swipe:
+          direction: DOWN
+          duration: 400
 - extendedWaitUntil:
     visible:
       id: 'home.preset.0'

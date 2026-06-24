@@ -1,0 +1,168 @@
+appId: jlsdigital.reactnativemapboxnavigation.example
+name: TC-9.6 Multiple routes in sequence exercise SDK teardown/reopen
+tags:
+  - lifecycle
+---
+- launchApp:
+    clearState: true
+# Fresh install: the dev-client renders its server list a beat after launch.
+# Wait for it (optional) so the conditional tap below isn't skipped by an
+# instantaneous visibility check that runs before the UI has drawn.
+- extendedWaitUntil:
+    visible:
+      text: 'http://(localhost|10\.0\.2\.2):8081'
+    timeout: 15000
+    optional: true
+- runFlow:
+    when:
+      visible:
+        text: 'http://(localhost|10\.0\.2\.2):8081'
+    commands:
+      - tapOn:
+          text: 'http://(localhost|10\.0\.2\.2):8081'
+- runFlow:
+    when:
+      visible: 'Continue'
+    commands:
+      - tapOn: 'Continue'
+- runFlow:
+    when:
+      platform: iOS
+      visible: 'Fast refresh'
+    commands:
+      - tapOn:
+          point: '50%, 8%'
+- runFlow:
+    when:
+      platform: Android
+      visible: 'Fast Refresh'
+    commands:
+      # This dev-client renders the Android dev menu as a swipe-dismissable
+      # bottom sheet (Reload / Go home / Fast Refresh …), not a full-screen
+      # menu with a top-right X. Swipe it down to dismiss.
+      - swipe:
+          direction: DOWN
+          duration: 400
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 60000
+# Drive three DIFFERENT routes back-to-back, cancelling each mid-route and
+# returning Home before starting the next. Each preset has a distinct
+# destination (and preset.0 a distinct origin), so every cycle tears down the
+# live Mapbox navigation session and builds a fresh one. This is the on-device
+# backstop for the dangling-provider fix: pre-fix, the second mount tripped
+# Mapbox's `checkInstanceIsUnique` because the previous
+# `MapboxNavigationProvider` was still alive. If teardown regresses, the 2nd or
+# 3rd mount below crashes and this flow fails.
+#
+# The cancel button's accessibility label differs by platform: iOS exposes the
+# SDK's built-in cancel button as "close"; on Android the bottom trip-progress
+# panel's stop button is labelled "End Navigation" (see TripPanel in
+# ReactNativeMapboxNavigation.kt). Tap promptly after mount to cancel mid-route.
+# ── Session 1: preset.1 (Zurich → Bern) ──────────────────
+- tapOn:
+    id: 'home.preset.1'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.mapboxNavigation'
+    timeout: 30000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: 'close'
+          timeout: 15000
+      - tapOn: 'close'
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: 'End Navigation'
+          timeout: 15000
+      - tapOn: 'End Navigation'
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 10000
+# ── Session 2: preset.2 (Zurich → Lucerne) ───────────────
+- tapOn:
+    id: 'home.preset.2'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.mapboxNavigation'
+    timeout: 30000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: 'close'
+          timeout: 15000
+      - tapOn: 'close'
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: 'End Navigation'
+          timeout: 15000
+      - tapOn: 'End Navigation'
+- extendedWaitUntil:
+    visible:
+      id: 'home.preset.0'
+    timeout: 10000
+# ── Session 3: preset.0 (Zurich short — distinct origin) ──
+- tapOn:
+    id: 'home.preset.0'
+- scrollUntilVisible:
+    element:
+      id: 'home.startNavigation'
+    direction: DOWN
+    timeout: 5000
+- tapOn:
+    id: 'home.startNavigation'
+- extendedWaitUntil:
+    visible:
+      id: 'navigation.mapboxNavigation'
+    timeout: 30000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: 'close'
+          timeout: 15000
+      - tapOn: 'close'
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: 'End Navigation'
+          timeout: 15000
+      - tapOn: 'End Navigation'
+# Survived three teardown/reopen cycles across distinct routes without a
+# crash — back on Home.
+- extendedWaitUntil:
+    visible:
+      id: 'home.startNavigation'
+    timeout: 10000
+- assertVisible:
+    id: 'home.preset.0'

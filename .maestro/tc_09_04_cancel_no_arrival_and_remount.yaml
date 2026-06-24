@@ -5,6 +5,14 @@ tags:
 ---
 - launchApp:
     clearState: true
+# Fresh install: the dev-client renders its server list a beat after launch.
+# Wait for it (optional) so the conditional tap below isn't skipped by an
+# instantaneous visibility check that runs before the UI has drawn.
+- extendedWaitUntil:
+    visible:
+      text: 'http://(localhost|10\.0\.2\.2):8081'
+    timeout: 15000
+    optional: true
 - runFlow:
     when:
       visible:
@@ -29,8 +37,12 @@ tags:
       platform: Android
       visible: 'Fast Refresh'
     commands:
-      - tapOn:
-          point: '94%, 9%'
+      # This dev-client renders the Android dev menu as a swipe-dismissable
+      # bottom sheet (Reload / Go home / Fast Refresh …), not a full-screen
+      # menu with a top-right X. Swipe it down to dismiss.
+      - swipe:
+          direction: DOWN
+          duration: 400
 - extendedWaitUntil:
     visible:
       id: 'home.preset.0'
@@ -49,15 +61,30 @@ tags:
     visible:
       id: 'navigation.mapboxNavigation'
     timeout: 30000
-# Give the nav UI a beat to settle and for the simulator to start
-# pushing location updates (so we exercise teardown mid-route, not
-# immediately after mount).
-- extendedWaitUntil:
-    visible: 'close'
-    timeout: 15000
-# Cancel via the Mapbox SDK's built-in cancel button in the bottom
-# banner — its UIAccessibility label is exactly "close".
-- tapOn: 'close'
+# Cancel mid-route via the SDK's cancel button in the bottom banner. The
+# button's accessibility label differs by platform: iOS exposes the SDK's
+# built-in cancel button as "close"; on Android the bottom trip-progress
+# panel's stop button is labelled "End Navigation" and fires
+# onCancelNavigation when tapped before arrival (onNavigationEnd only after
+# arrival — see TripPanel in ReactNativeMapboxNavigation.kt). Tap promptly
+# after mount so we exercise teardown mid-route, before the short (~150m)
+# simulated preset reaches its destination.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: 'close'
+          timeout: 15000
+      - tapOn: 'close'
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: 'End Navigation'
+          timeout: 15000
+      - tapOn: 'End Navigation'
 # onCancelNavigation goes back to Home.
 - extendedWaitUntil:
     visible:
