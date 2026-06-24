@@ -24,6 +24,9 @@ export default defineConfig([
     },
   },
   {
-    ignores: ['node_modules/', 'lib/'],
+    // Build output is generated, never hand-edited — don't lint it. `**/build/`
+    // covers the Android/iOS Gradle/Xcode build dirs (incl. generated test
+    // reports like android/build/reports/**/report.js).
+    ignores: ['node_modules/', 'lib/', '**/build/'],
   },
 ]);
