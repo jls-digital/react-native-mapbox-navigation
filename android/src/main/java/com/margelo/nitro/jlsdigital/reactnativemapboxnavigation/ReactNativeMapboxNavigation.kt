@@ -383,16 +383,20 @@ class HybridReactNativeMapboxNavigation(
 
   // ── Session start ────────────────────────────────────
 
-  /** @return true if setup actually started (all preconditions passed). */
-  /** Outcome of a session-start attempt; drives whether afterUpdate retries. */
-  private enum class SessionStart { STARTED, RETRYABLE, TERMINAL }
-
+  /** @return the session-start outcome; drives whether afterUpdate retries. */
   private fun startSessionIfReady(): SessionStart {
-    // Invalid coordinates won't become valid by retrying — terminal.
-    if (!ensureCoordinatesValid()) return SessionStart.TERMINAL
-    // GPS / permission can change after mount — retryable.
-    if (!ensureLocationAvailable()) return SessionStart.RETRYABLE
-    if (!ensureLocationPermission()) return SessionStart.RETRYABLE
+    // Gather the three preconditions in the original guard order, short-
+    // circuiting so the location/permission errors aren't emitted when the
+    // coordinates are already invalid. Each ensure* still emits its matching
+    // precondition error (de-duped). [SessionStartDecision.decide] then maps
+    // the booleans to the outcome with the same precedence:
+    //  - invalid coords → TERMINAL (retrying can't fix it)
+    //  - GPS / permission → RETRYABLE (can change after mount)
+    val coordsValid = ensureCoordinatesValid()
+    val locationAvailable = coordsValid && ensureLocationAvailable()
+    val permissionGranted = locationAvailable && ensureLocationPermission()
+    val decision = SessionStartDecision.decide(coordsValid, locationAvailable, permissionGranted)
+    if (decision != SessionStart.STARTED) return decision
 
     lastPreconditionErrorCode = null
     ensureMapboxSetup()
@@ -426,22 +430,14 @@ class HybridReactNativeMapboxNavigation(
     return ReplayRouteSession().apply { setOptions(sessionOpts) }
   }
 
-  private fun resolveLocale(): Locale {
-    val tag = language?.takeIf { it.isNotBlank() } ?: return Locale.getDefault()
-    return Locale.forLanguageTag(tag.replace('_', '-'))
-  }
-
-  private fun unitTypeFor(locale: Locale): UnitType = when (locale.country.uppercase()) {
-    "US", "LR", "MM" -> UnitType.IMPERIAL
-    else -> UnitType.METRIC
-  }
+  private fun resolveLocale(): Locale = LocaleUnits.resolveLocale(language)
 
   private fun ensureTripDataApis() {
     if (maneuverApi != null) return
     val locale = resolveLocale()
     val dfOpts = DistanceFormatterOptions.Builder(context)
       .locale(locale)
-      .unitType(unitTypeFor(locale))
+      .unitType(LocaleUnits.unitTypeFor(locale))
       .build()
     distanceFormatterOptions = dfOpts
     val distanceFormatter = MapboxDistanceFormatter(dfOpts)
@@ -798,24 +794,18 @@ class HybridReactNativeMapboxNavigation(
   }
 
   private fun ensureCoordinatesValid(): Boolean {
-    fun isValid(c: Coordinates): Boolean =
-      c.latitude in -90.0..90.0 &&
-      c.longitude in -180.0..180.0 &&
-      !(c.latitude == 0.0 && c.longitude == 0.0)
-    if (!isValid(origin) || !isValid(destination)) {
-      emitPreconditionError(
-        "INVALID_COORDINATES",
-        "Origin or destination is outside the valid lat/lon range or is the default (0, 0)."
-      )
-      return false
-    }
-    waypoints?.forEachIndexed { i, wp ->
-      if (!isValid(wp.coordinate)) {
-        emitPreconditionError("INVALID_COORDINATES", "Waypoint #${i + 1} coordinate is invalid.")
-        return false
+    val result = CoordinateValidation.validate(
+      origin = origin.latitude to origin.longitude,
+      destination = destination.latitude to destination.longitude,
+      waypoints = waypoints?.map { it.coordinate.latitude to it.coordinate.longitude } ?: emptyList()
+    )
+    return when (result) {
+      is CoordinateValidation.Result.Ok -> true
+      is CoordinateValidation.Result.Invalid -> {
+        emitPreconditionError(result.code, result.message)
+        false
       }
     }
-    return true
   }
 
   // ── MapboxNavigation observer ───────────────────────
@@ -942,7 +932,7 @@ class HybridReactNativeMapboxNavigation(
     // both applyLanguageAndVoiceUnitOptions and the redundant second
     // .language() call that previously followed it.)
     val locale = resolveLocale()
-    val voiceUnits = when (unitTypeFor(locale)) {
+    val voiceUnits = when (LocaleUnits.unitTypeFor(locale)) {
       UnitType.IMPERIAL -> DirectionsCriteria.IMPERIAL
       UnitType.METRIC -> DirectionsCriteria.METRIC
     }
@@ -973,15 +963,8 @@ class HybridReactNativeMapboxNavigation(
     view.renderRouteLineUpdate(style, api.updateTraveledRouteLine(point))
   }
 
-  private fun classifyRouterFailure(reason: RouterFailure?): String {
-    val msg = reason?.message.orEmpty().lowercase()
-    return when {
-      msg.contains("network") || msg.contains("timeout") || msg.contains("connection") -> "NETWORK_ERROR"
-      msg.contains("auth") || msg.contains("401") || msg.contains("403") -> "SDK_INIT_FAILED"
-      msg.contains("input") || msg.contains("invalid") -> "INVALID_COORDINATES"
-      else -> "ROUTE_CALCULATION_FAILED"
-    }
-  }
+  private fun classifyRouterFailure(reason: RouterFailure?): String =
+    RouteErrorClassifier.classify(reason?.message)
 
   // ── Observers ────────────────────────────────────────
 
@@ -1082,7 +1065,7 @@ class HybridReactNativeMapboxNavigation(
       val prevLat = lastLat
       val prevLon = lastLon
       if (prevLat != null && prevLon != null &&
-        haversine(prevLat, prevLon, lat, lon) < locationEpsilonMeters) return
+        NavFormatting.haversineMeters(prevLat, prevLon, lat, lon) < locationEpsilonMeters) return
       val now = SystemClock.elapsedRealtime()
       if (now - lastLocationEmitMs < jsEventMinIntervalMs) return
       lastLocationEmitMs = now
@@ -1149,11 +1132,8 @@ class HybridReactNativeMapboxNavigation(
     })
   }
 
-  private fun resolveDark(): Boolean = when (colorScheme) {
-    "dark" -> true
-    "light" -> false
-    else -> isSystemInDarkMode()
-  }
+  private fun resolveDark(): Boolean =
+    ColorSchemeResolver.resolveDark(colorScheme, isSystemInDarkMode())
 
   private fun isSystemInDarkMode(): Boolean {
     val night = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
@@ -1192,15 +1172,4 @@ class HybridReactNativeMapboxNavigation(
       .isAppearanceLightStatusBars = !resolveDark()
   }
 
-  // ── Helpers ──────────────────────────────────────────
-
-  private fun haversine(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-    val r = 6371000.0
-    val dLat = Math.toRadians(lat2 - lat1)
-    val dLon = Math.toRadians(lon2 - lon1)
-    val a = Math.sin(dLat / 2).let { it * it } +
-      Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
-      Math.sin(dLon / 2).let { it * it }
-    return 2 * r * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  }
 }

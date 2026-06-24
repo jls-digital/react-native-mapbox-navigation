@@ -175,18 +175,12 @@ internal class TripPanel(
 
   // Hand-rolled metric fallbacks used only when the SDK has not yet handed us
   // a TripProgressUpdateValue (whose .formatter already does locale + unit).
-  // Pin an explicit Locale so the "km" decimal separator is deterministic
-  // rather than the implicit device default.
-  private fun formatDistance(meters: Double): String {
-    if (meters < 1000) return "${meters.toInt()} m"
-    return String.format(Locale.getDefault(), "%.1f km", meters / 1000.0)
-  }
+  // Routed through [NavFormatting] (shared with ManeuverBanner + the god
+  // class); pin an explicit Locale so the "km" decimal separator is
+  // deterministic rather than the implicit device default.
+  private fun formatDistance(meters: Double): String =
+    NavFormatting.formatDistanceMeters(meters, Locale.getDefault())
 
-  private fun formatDuration(secs: Double): String {
-    val mins = (secs / 60.0).toInt()
-    if (mins < 60) return "$mins min"
-    val h = mins / 60
-    val m = mins % 60
-    return "${h}h ${m}m"
-  }
+  private fun formatDuration(secs: Double): String =
+    NavFormatting.formatDurationSeconds(secs)
 }

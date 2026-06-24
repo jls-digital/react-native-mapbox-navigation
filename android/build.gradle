@@ -175,4 +175,11 @@ dependencies {
   implementation "androidx.recyclerview:recyclerview:1.3.2"
   implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.8.7"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+
+  // Off-device JVM unit tests for the framework-free pure units extracted
+  // from ReactNativeMapboxNavigation.kt (RouteErrorClassifier,
+  // CoordinateValidation, SessionStartDecision, LocaleUnits, NavFormatting,
+  // ColorSchemeResolver). Plain JUnit4 — the units are Android-framework-free,
+  // so no Robolectric is needed. AGP's `src/test` runs these on the host JVM.
+  testImplementation "junit:junit:4.13.2"
 }

@@ -282,10 +282,10 @@ internal class ManeuverBanner(context: Context) : LinearLayout(context) {
     }
     // Prefer the SDK formatter — it handles locale (decimal separator) and
     // unit system (metric/imperial). Only hand-roll a metric fallback when no
-    // formatter has been injected yet, and even then pin an explicit Locale
-    // so the decimal separator is deterministic rather than the device default.
+    // formatter has been injected yet; route it through [NavFormatting]
+    // (shared with TripPanel + the god class) with an explicit Locale so the
+    // decimal separator is deterministic rather than the device default.
     distanceFormatter?.let { return it.formatDistance(rounded).toString() }
-    if (rounded < 1000) return "${rounded.toInt()} m"
-    return String.format(Locale.getDefault(), "%.1f km", rounded / 1000.0)
+    return NavFormatting.formatDistanceMeters(rounded, Locale.getDefault())
   }
 }
