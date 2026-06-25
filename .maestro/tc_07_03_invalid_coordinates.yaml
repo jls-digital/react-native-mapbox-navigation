@@ -10,16 +10,16 @@ tags:
 # instantaneous visibility check that runs before the UI has drawn.
 - extendedWaitUntil:
     visible:
-      text: 'http://(localhost|10\.0\.2\.2):8081'
+      text: 'http://(localhost|10\.0\.2\.2|[0-9.]+):8081'
     timeout: 15000
     optional: true
 - runFlow:
     when:
       visible:
-        text: 'http://(localhost|10\.0\.2\.2):8081'
+        text: 'http://(localhost|10\.0\.2\.2|[0-9.]+):8081'
     commands:
       - tapOn:
-          text: 'http://(localhost|10\.0\.2\.2):8081'
+          text: 'http://(localhost|10\.0\.2\.2|[0-9.]+):8081'
 - runFlow:
     when:
       visible: 'Continue'

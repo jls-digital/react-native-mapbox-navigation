@@ -31,7 +31,9 @@ export function HomeScreen({ navigation }: Props) {
     ROUTE_PRESETS[0]!
   );
   const [simulateRoute, setSimulateRoute] = useState(true);
-  const [mute, setMute] = useState(false);
+  // Demo starts muted by default so turn-by-turn voice guidance never
+  // plays unprompted (e.g. during automated E2E runs). Toggle to unmute.
+  const [mute, setMute] = useState(true);
   const [language, setLanguage] = useState<MapboxLanguage>('en');
   const [colorScheme, setColorScheme] = useState<'auto' | 'light' | 'dark'>(
     'auto'
