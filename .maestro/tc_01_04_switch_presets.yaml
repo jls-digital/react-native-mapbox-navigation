@@ -3,6 +3,31 @@ name: TC-1.4 Switch between presets
 ---
 - launchApp:
     clearState: true
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      # Emulator dev-client can't auto-discover host Metro over the NAT (no LAN
+      # broadcast like the iOS simulator), so connect explicitly to the host
+      # loopback alias 10.0.2.2 via the manual URL field, then dismiss the
+      # expo-dev-client menu (intro "Continue" -> full menu, closed with Back).
+      - tapOn: 'exp://'
+      - inputText: 'http://10.0.2.2:8081'
+      - tapOn: 'Connect'
+      - extendedWaitUntil:
+          visible: 'Continue'
+          timeout: 60000
+          optional: true
+      - runFlow:
+          when:
+            visible: 'Continue'
+          commands:
+            - tapOn: 'Continue'
+      - runFlow:
+          when:
+            visible: 'Go home'
+          commands:
+            - pressKey: Back
 # Fresh install: the dev-client renders its server list a beat after launch.
 # Wait for it (optional) so the conditional tap below isn't skipped by an
 # instantaneous visibility check that runs before the UI has drawn.
