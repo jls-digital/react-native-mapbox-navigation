@@ -1,4 +1,4 @@
-appId: jlsdigital.reactnativemapboxnavigation.example
+appId: ch.jls.reactnative.mapboxnavigation.example
 name: TC-9.5 Arrival → remount works (teardown on RN unmount)
 tags:
   - lifecycle

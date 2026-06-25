@@ -18,7 +18,7 @@ if [ -z "$UDID" ]; then
   exit 1
 fi
 
-BUNDLE_ID="jlsdigital.reactnativemapboxnavigation.example"
+BUNDLE_ID="ch.jls.reactnative.mapboxnavigation.example"
 APP_PATH=$(find "$HOME/Library/Developer/Xcode/DerivedData" \
   -type d \
   -path '*Build/Products/Debug-iphonesimulator/ReactNativeMapboxNavigationExample.app' \

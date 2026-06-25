@@ -1,4 +1,4 @@
-appId: jlsdigital.reactnativemapboxnavigation.example
+appId: ch.jls.reactnative.mapboxnavigation.example
 name: TC-8.1 onRouteProgressChange events observed in debug console
 ---
 - launchApp:

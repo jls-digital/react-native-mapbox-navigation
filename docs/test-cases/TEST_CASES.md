@@ -17,7 +17,7 @@
 - Flows that require a specific permission state should either launch
   with `clearState: true` (resets app data; TCC state survives on iOS)
   or be preceded by `xcrun simctl privacy <udid> reset location
-  jlsdigital.reactnativemapboxnavigation.example`.
+  ch.jls.reactnative.mapboxnavigation.example`.
 
 ---
 

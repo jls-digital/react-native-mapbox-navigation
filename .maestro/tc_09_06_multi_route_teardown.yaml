@@ -1,4 +1,4 @@
-appId: jlsdigital.reactnativemapboxnavigation.example
+appId: ch.jls.reactnative.mapboxnavigation.example
 name: TC-9.6 Multiple routes in sequence exercise SDK teardown/reopen
 tags:
   - lifecycle

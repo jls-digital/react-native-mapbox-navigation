@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "jlsdigital.reactnativemapboxnavigation.example",
+      "bundleIdentifier": "ch.jls.reactnative.mapboxnavigation.example",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This demo needs your location to guide you along the selected route.",
         "UIBackgroundModes": ["audio"]
@@ -26,7 +26,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "jlsdigital.reactnativemapboxnavigation.example"
+      "package": "ch.jls.reactnative.mapboxnavigation.example"
     },
     "web": {
       "favicon": "./assets/favicon.png"

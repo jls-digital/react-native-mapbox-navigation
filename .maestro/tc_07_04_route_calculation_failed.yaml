@@ -1,4 +1,4 @@
-appId: jlsdigital.reactnativemapboxnavigation.example
+appId: ch.jls.reactnative.mapboxnavigation.example
 name: TC-7.4 Unroutable destination triggers ROUTE_CALCULATION_FAILED
 tags:
   - error

@@ -1,4 +1,4 @@
-appId: jlsdigital.reactnativemapboxnavigation.example
+appId: ch.jls.reactnative.mapboxnavigation.example
 name: TC-1.1 Home screen loads with presets
 tags:
   - smoke
