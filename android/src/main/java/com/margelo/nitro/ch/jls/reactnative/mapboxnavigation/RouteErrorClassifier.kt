@@ -1,4 +1,4 @@
-package com.margelo.nitro.jlsdigital.reactnativemapboxnavigation
+package com.margelo.nitro.ch.jls.reactnative.mapboxnavigation
 
 // ── RouteErrorClassifier ──────────────────────────────
 // The message-substring half of route-error classification, split out of

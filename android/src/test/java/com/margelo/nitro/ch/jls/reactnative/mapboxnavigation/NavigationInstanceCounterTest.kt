@@ -1,4 +1,4 @@
-package com.margelo.nitro.jlsdigital.reactnativemapboxnavigation
+package com.margelo.nitro.ch.jls.reactnative.mapboxnavigation
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

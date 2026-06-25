@@ -1,4 +1,4 @@
-package com.margelo.nitro.jlsdigital.reactnativemapboxnavigation
+package com.margelo.nitro.ch.jls.reactnative.mapboxnavigation
 
 import com.facebook.react.BaseReactPackage
 import com.facebook.react.bridge.NativeModule
@@ -6,7 +6,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.module.model.ReactModuleInfoProvider
 import com.facebook.react.uimanager.ViewManager
 
-import com.margelo.nitro.jlsdigital.reactnativemapboxnavigation.views.HybridReactNativeMapboxNavigationManager
+import com.margelo.nitro.ch.jls.reactnative.mapboxnavigation.views.HybridReactNativeMapboxNavigationManager
 
 class ReactNativeMapboxNavigationPackage : BaseReactPackage() {
     override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? {
@@ -23,7 +23,7 @@ class ReactNativeMapboxNavigationPackage : BaseReactPackage() {
 
     companion object {
         init {
-            System.loadLibrary("jlsdigital_reactnativemapboxnavigation")
+            System.loadLibrary("ch_jls_reactnative_mapboxnavigation")
         }
     }
 }

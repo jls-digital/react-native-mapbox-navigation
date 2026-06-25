@@ -1,4 +1,4 @@
-package com.margelo.nitro.jlsdigital.reactnativemapboxnavigation
+package com.margelo.nitro.ch.jls.reactnative.mapboxnavigation
 
 // ── CoordinateValidation ──────────────────────────────
 // Pure coordinate-range checks extracted from

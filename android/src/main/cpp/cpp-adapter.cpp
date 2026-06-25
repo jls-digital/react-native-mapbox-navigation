@@ -1,6 +1,6 @@
 #include <jni.h>
-#include "jlsdigital_reactnativemapboxnavigationOnLoad.hpp"
+#include "ch_jls_reactnative_mapboxnavigationOnLoad.hpp"
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
-  return margelo::nitro::jlsdigital_reactnativemapboxnavigation::initialize(vm);
+  return margelo::nitro::ch_jls_reactnative_mapboxnavigation::initialize(vm);
 }

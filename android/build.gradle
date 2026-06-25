@@ -63,7 +63,7 @@ def reactNativeArchitectures() {
 
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
-apply from: '../nitrogen/generated/android/jlsdigital_reactnativemapboxnavigation+autolinking.gradle'
+apply from: '../nitrogen/generated/android/ch_jls_reactnative_mapboxnavigation+autolinking.gradle'
 
 apply plugin: "com.facebook.react"
 
@@ -73,12 +73,12 @@ apply plugin: "com.facebook.react"
 // duplicate-class errors during app dex merging).
 react {
   jsRootDir = file("../src")
-  libraryName = "jlsdigital_reactnativemapboxnavigation"
-  codegenJavaPackageName = "com.margelo.nitro.jlsdigital.reactnativemapboxnavigation"
+  libraryName = "ch_jls_reactnative_mapboxnavigation"
+  codegenJavaPackageName = "com.margelo.nitro.ch.jls.reactnative.mapboxnavigation"
 }
 
 android {
-  namespace "com.margelo.nitro.jlsdigital.reactnativemapboxnavigation"
+  namespace "com.margelo.nitro.ch.jls.reactnative.mapboxnavigation"
 
   compileSdkVersion getExtOrDefault("compileSdkVersion")
 

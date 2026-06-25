@@ -1,11 +1,11 @@
 {
-  "cxxNamespace": ["jlsdigital_reactnativemapboxnavigation"],
+  "cxxNamespace": ["ch_jls_reactnative_mapboxnavigation"],
   "ios": {
     "iosModuleName": "ReactNativeMapboxNavigation"
   },
   "android": {
-    "androidNamespace": ["jlsdigital","reactnativemapboxnavigation"],
-    "androidCxxLibName": "jlsdigital_reactnativemapboxnavigation"
+    "androidNamespace": ["ch","jls","reactnative","mapboxnavigation"],
+    "androidCxxLibName": "ch_jls_reactnative_mapboxnavigation"
   },
   "autolinking": {
     "ReactNativeMapboxNavigation": {
