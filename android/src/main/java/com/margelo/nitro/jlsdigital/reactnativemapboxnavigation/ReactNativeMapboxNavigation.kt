@@ -22,7 +22,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.LifecycleOwner
 import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.uimanager.ThemedReactContext
-import com.mapbox.api.directions.v5.DirectionsCriteria
 import com.mapbox.api.directions.v5.models.RouteOptions
 import com.mapbox.geojson.Point
 import com.mapbox.maps.CameraOptions
@@ -40,9 +39,7 @@ import com.mapbox.maps.plugin.locationcomponent.OnIndicatorPositionChangedListen
 import com.mapbox.maps.plugin.locationcomponent.createDefault2DPuck
 import com.mapbox.maps.plugin.locationcomponent.location
 import com.mapbox.navigation.base.ExperimentalPreviewMapboxNavigationAPI
-import com.mapbox.navigation.base.extensions.applyDefaultNavigationOptions
 import com.mapbox.navigation.base.formatter.DistanceFormatterOptions
-import com.mapbox.navigation.base.formatter.UnitType
 import com.mapbox.navigation.base.options.NavigationOptions
 import com.mapbox.navigation.base.route.NavigationRoute
 import com.mapbox.navigation.base.route.NavigationRouterCallback
@@ -909,45 +906,26 @@ class HybridReactNativeMapboxNavigation(
     })
   }
 
-  private fun buildRouteOptions(): RouteOptions {
-    val points = mutableListOf<Point>()
-    points.add(Point.fromLngLat(origin.longitude, origin.latitude))
-    waypoints?.forEach { wp ->
-      points.add(Point.fromLngLat(wp.coordinate.longitude, wp.coordinate.latitude))
-    }
-    points.add(Point.fromLngLat(destination.longitude, destination.latitude))
-
-    val stopIndices = mutableListOf(0)
-    waypoints?.forEachIndexed { i, wp ->
-      if (wp.isSilent != true) stopIndices.add(i + 1)
-    }
-    stopIndices.add(points.size - 1)
-
-    // Derive language + voice units from the prop language (resolveLocale()),
-    // NOT the device locale. The display distance formatter already uses
-    // resolveLocale()/unitTypeFor() in ensureTripDataApis(); SDK's
-    // applyLanguageAndVoiceUnitOptions(context) instead reads the device
-    // locale, so spoken units could disagree with the on-screen formatter.
-    // Set them explicitly here so both sides stay consistent. (This replaces
-    // both applyLanguageAndVoiceUnitOptions and the redundant second
-    // .language() call that previously followed it.)
-    val locale = resolveLocale()
-    val voiceUnits = when (LocaleUnits.unitTypeFor(locale)) {
-      UnitType.IMPERIAL -> DirectionsCriteria.IMPERIAL
-      UnitType.METRIC -> DirectionsCriteria.METRIC
-    }
-    // Use the locale's language code (e.g. "en", "de"), matching what the
-    // SDK extension would have inferred — Mapbox Directions' language field
-    // expects the bare ISO code, not a full BCP-47 tag like "en-US".
-    val builder = RouteOptions.builder()
-      .applyDefaultNavigationOptions()
-      .language(locale.language)
-      .voiceInstructions(true)
-      .voiceUnits(voiceUnits)
-      .coordinatesList(points)
-      .waypointIndicesList(stopIndices)
-    return builder.build()
-  }
+  // Coordinate ordering, silent-waypoint and language/voice-unit logic lives in
+  // the testable `RouteOptionsFactory`; the god class just maps its nitro props
+  // into the factory's neutral inputs. Language + voice units come from
+  // resolveLocale() (the prop language), NOT the device locale, so the spoken
+  // units agree with the on-screen distance formatter (which also uses
+  // resolveLocale()/unitTypeFor() in ensureTripDataApis()).
+  private fun buildRouteOptions(): RouteOptions =
+    RouteOptionsFactory.build(
+      origin = RouteOptionsFactory.Coordinate(origin.latitude, origin.longitude),
+      destination = RouteOptionsFactory.Coordinate(destination.latitude, destination.longitude),
+      waypoints = waypoints.orEmpty().map { wp ->
+        RouteOptionsFactory.Waypoint(
+          coordinate = RouteOptionsFactory.Coordinate(
+            wp.coordinate.latitude, wp.coordinate.longitude
+          ),
+          isSilent = wp.isSilent == true,
+        )
+      },
+      locale = resolveLocale(),
+    )
 
   private fun drawRouteLine(routes: List<NavigationRoute>) {
     val style = loadedStyle ?: return
