@@ -87,7 +87,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicInteger
 
 private const val TAG = "RNMapboxNav"
 
@@ -122,9 +121,10 @@ class HybridReactNativeMapboxNavigation(
     // MapboxNavigationApp is a process-global singleton. With more than one
     // navigation view mounted (or one remounting while another lingers), a
     // single instance's teardown must NOT disable() the SDK out from under
-    // the others. Count instances that have completed setup and only
-    // disable() when the last one detaches.
-    private val activeInstanceCount = AtomicInteger(0)
+    // the others. The shared counter only signals disable() when the LAST
+    // instance detaches; the "count once, disable on last" logic lives in the
+    // testable NavigationInstanceCounter.
+    private val instanceCounter = NavigationInstanceCounter()
   }
 
   private val mainHandler = Handler(Looper.getMainLooper())
@@ -180,9 +180,10 @@ class HybridReactNativeMapboxNavigation(
   private var moveListener: OnMoveListener? = null
   private var cameraStateObserver: NavigationCameraStateChangedObserver? = null
 
-  // Tracks whether THIS instance has incremented activeInstanceCount, so the
-  // decrement in detach is balanced exactly once even if setup never ran.
-  private var didIncrementActiveCount = false
+  // THIS instance's membership in the shared instance counter. acquire() on
+  // setup, release() on detach; release() reports when this was the last live
+  // instance so the SDK singleton can be disabled.
+  private val instanceMembership = instanceCounter.newMembership()
 
   private var maneuverApi: MapboxManeuverApi? = null
   private var turnIconsApi: MapboxTurnIconsApi? = null
@@ -355,13 +356,7 @@ class HybridReactNativeMapboxNavigation(
     // last live instance. MapboxNavigationApp is process-global; disabling it
     // while another navigation view is mounted (or remounting) would tear the
     // SDK out from under it.
-    val remaining = if (didIncrementActiveCount) {
-      didIncrementActiveCount = false
-      activeInstanceCount.decrementAndGet()
-    } else {
-      activeInstanceCount.get()
-    }
-    if (remaining <= 0) {
+    if (instanceMembership.release()) {
       try { MapboxNavigationApp.disable() } catch (t: Throwable) {
         Log.w(TAG, "MapboxNavigationApp.disable() threw: ${t.message}")
       }
@@ -407,10 +402,7 @@ class HybridReactNativeMapboxNavigation(
     }
     // Count this instance as live exactly once so detach's decrement is
     // balanced and only the last instance disables the SDK singleton.
-    if (!didIncrementActiveCount) {
-      didIncrementActiveCount = true
-      activeInstanceCount.incrementAndGet()
-    }
+    instanceMembership.acquire()
     return SessionStart.STARTED
   }
 

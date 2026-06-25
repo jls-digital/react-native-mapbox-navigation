@@ -43,80 +43,57 @@ private let providerStoreLogTag = "[RNMapboxNav]"
 // (build a 2nd provider) or kill the sibling (idle+rebuild), we reuse the
 // existing provider and flag it. See TODO below.
 //
-// The pure refcount/config bookkeeping lives in `ProviderStoreState` so it
-// can be unit-tested without the SDK; this class injects a provider-factory
-// closure (defaulting to the real `MapboxNavigationProvider(coreConfig:)`)
-// and performs the framework side effects the decisions name.
+// The refcount/config bookkeeping lives in `ProviderStoreState` and the
+// effect-sequencing (idle-before-rebuild, idle-on-last-release, never two live
+// instances) lives in the SDK-free `ProviderCache` — both host-unit-tested
+// without the SDK. This class is the thin shell: it conforms the real
+// `MapboxNavigationProvider` to `ProviderControlling`, injects the
+// provider-factory closure (defaulting to the real `MapboxNavigationProvider(coreConfig:)`),
+// and forwards acquire/release to the cache.
+//
+// We deliberately keep the cached provider alive + idle between mounts rather
+// than deallocating on release: Mapbox's provider owns a threadpool +
+// StyleManager, and releasing it in the same runloop turn as `setToIdle()`
+// races in-flight draw work and segfaults. The next mount with the same config
+// reuses it (the common case — the configKey is stable across remounts), with
+// no rebuild and no `checkInstanceIsUnique()` risk. A genuine config change
+// (locale / sim toggle) is the `rebuildStale` path in `ProviderCache`, which
+// idles + drops the stale provider before building the replacement.
+//
+// TODO: support concurrent nav views with differing configs if the SDK ever
+// drops the single-provider constraint. For now that combination is
+// unsupported (the `reuseLiveDifferentConfig` path) and logged loudly.
+extension MapboxNavigationProvider: ProviderControlling {
+  // `ProviderControlling` is deliberately non-isolated (so the generic cache +
+  // its tests stay SDK- and actor-free), but `mapboxNavigation` is main-actor
+  // isolated. Every call into the cache — and therefore into idle() — originates
+  // from the @MainActor `MapboxProviderStore`, so assert that isolation here
+  // rather than hopping actors (which would make idle() async).
+  nonisolated func idle() {
+    MainActor.assumeIsolated {
+      mapboxNavigation.tripSession().setToIdle()
+    }
+  }
+}
+
 @MainActor
 final class MapboxProviderStore {
   static let shared = MapboxProviderStore()
-  private var provider: MapboxNavigationProvider?
-  private var state = ProviderStoreState()
-  // Injectable so the refcount transitions + build/idle sequencing can be
-  // exercised in tests with a fake provider. Production uses the real ctor.
+  private let cache: ProviderCache<MapboxNavigationProvider>
+  // Injectable so the build/idle sequencing can be exercised in tests with a
+  // fake provider. Production uses the real ctor.
   private let makeProvider: (CoreConfig) -> MapboxNavigationProvider
 
   init(makeProvider: @escaping (CoreConfig) -> MapboxNavigationProvider = { MapboxNavigationProvider(coreConfig: $0) }) {
     self.makeProvider = makeProvider
+    self.cache = ProviderCache(log: { NSLog("\(providerStoreLogTag) MapboxProviderStore: \($0)") })
   }
 
   func acquire(configKey: String, coreConfig: CoreConfig) -> MapboxNavigationProvider {
-    let decision = state.acquireDecision(configKey: configKey, hasProvider: provider != nil)
-    switch decision {
-    case .reuseSameConfig:
-      state.applyAcquire(decision)
-      return provider!
-    case .reuseLiveDifferentConfig(let requested, let live):
-      // Another holder is still navigating with a different config. We
-      // cannot safely build a second provider (SDK singleton) nor idle
-      // this one (would kill the live session — the very bug we fix).
-      // Reuse the live provider and increment the refcount; the newcomer
-      // inherits the existing locale/sim/origin.
-      // TODO: support concurrent nav views with differing configs if the
-      // SDK ever drops the single-provider constraint. For now this is an
-      // unsupported combination — surface it loudly so it's caught in dev.
-      NSLog("\(providerStoreLogTag) MapboxProviderStore: WARNING requested config (\(requested)) differs from live config (\(live ?? "nil")) while \(state.refCount) holder(s) active; reusing live provider (unsupported concurrent configs)")
-      state.applyAcquire(decision)
-      return provider!
-    case .rebuildStale(let previous, let requested):
-      // A stale provider with no live holders. Idle it AND drop our strong
-      // ref BEFORE constructing the replacement: MapboxNavigationProvider's
-      // `checkInstanceIsUnique()` asserts (crashes) if a second instance is
-      // built while the first is still alive. We deliberately don't bind it
-      // to a local `let` — that would keep it alive across the init below.
-      NSLog("\(providerStoreLogTag) MapboxProviderStore: config changed (\(previous ?? "nil") → \(requested)) — releasing stale provider before rebuild")
-      provider?.mapboxNavigation.tripSession().setToIdle()
-      provider = nil
-      let new = makeProvider(coreConfig)
-      provider = new
-      state.applyAcquire(decision)
-      return new
-    case .buildFresh:
-      let new = makeProvider(coreConfig)
-      provider = new
-      state.applyAcquire(decision)
-      return new
-    }
+    cache.acquire(configKey: configKey) { [makeProvider] _ in makeProvider(coreConfig) }
   }
 
-  // Release a hold previously taken via `acquire`. When the LAST holder
-  // releases, idle the trip session but KEEP the provider cached and alive.
-  //
-  // We deliberately do NOT deallocate it here: Mapbox's provider owns a
-  // threadpool + StyleManager, and releasing it in the same runloop turn as
-  // `setToIdle()` races in-flight draw work and segfaults. Keeping it cached
-  // also lets the next mount with the same config reuse it (the common case —
-  // the configKey is stable across remounts), with no rebuild and no
-  // `checkInstanceIsUnique()` risk. A genuine config change (locale / sim
-  // toggle) is handled in `acquire`, which drops the stale provider before
-  // building the replacement.
   func release(configKey: String) {
-    switch state.release(hasProvider: provider != nil) {
-    case .noop:
-      return
-    case .idle:
-      NSLog("\(providerStoreLogTag) MapboxProviderStore: last holder released (\(configKey)) — idling provider")
-      provider?.mapboxNavigation.tripSession().setToIdle()
-    }
+    cache.release(configKey: configKey)
   }
 }
