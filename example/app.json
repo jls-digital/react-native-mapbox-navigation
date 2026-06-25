@@ -17,7 +17,9 @@
       "bundleIdentifier": "ch.jls.reactnative.mapboxnavigation.example",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This demo needs your location to guide you along the selected route.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
@@ -35,11 +37,13 @@
         "expo-build-properties",
         {
           "ios": {
-            "useFrameworks": "dynamic"
+            "useFrameworks": "dynamic",
+            "deploymentTarget": "16.4"
           }
         }
       ],
-      "../app.plugin.js"
+      "../app.plugin.js",
+      "expo-status-bar"
     ]
   }
 }
