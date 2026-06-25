@@ -62,17 +62,21 @@ def react_native_mapbox_navigation_post_install(installer)
     content = File.read(script_path)
     next if content.include?(REACT_NATIVE_MAPBOX_NAVIGATION_MARKER)
 
+    # NOTE: do NOT gate these on `${CONFIGURATION}` being "Debug"/"Release".
+    # Apps with custom multi-environment build configurations (e.g.
+    # "LOCAL.Debug", "PRODUCTION.Release") never match those names, so the
+    # frameworks silently fail to embed and the app crashes at launch with
+    # "Library not loaded: @rpath/MapboxCommon.framework". The per-framework
+    # `[ -d ... ]` existence check already makes these safe for any config.
     snippet = [
       '',
       REACT_NATIVE_MAPBOX_NAVIGATION_MARKER,
       '# Install Mapbox transitive SPM frameworks that CocoaPods does not',
       '# iterate on its own. Missing frameworks are silently skipped so this',
       '# is safe to run on builds that link only a subset.',
-      'if [ "${CONFIGURATION}" == "Debug" ] || [ "${CONFIGURATION}" == "Release" ]; then',
       *REACT_NATIVE_MAPBOX_NAVIGATION_TRANSITIVE_FRAMEWORKS.map { |framework|
-        "  [ -d \"${BUILT_PRODUCTS_DIR}/#{framework}.framework\" ] && install_framework \"${BUILT_PRODUCTS_DIR}/#{framework}.framework\""
+        "[ -d \"${BUILT_PRODUCTS_DIR}/#{framework}.framework\" ] && install_framework \"${BUILT_PRODUCTS_DIR}/#{framework}.framework\""
       },
-      'fi',
       '',
     ].join("\n")
 

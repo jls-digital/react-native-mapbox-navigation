@@ -1,4 +1,5 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
+import { StyleSheet } from 'react-native';
 import { callback } from 'react-native-nitro-modules';
 import { ReactNativeMapboxNavigationView } from './ReactNativeMapboxNavigationView.native';
 import type {
@@ -118,16 +119,30 @@ export const MapboxNavigation = forwardRef<
   return (
     <ReactNativeMapboxNavigationView
       {...viewProps}
+      // This is a full-screen, self-contained navigation experience, so it
+      // must fill its parent by default. A Nitro HybridView has no intrinsic
+      // size — without a flex/size the RN layout collapses it to height 0 and
+      // the (still-running) nav session renders into a zero-height view. The
+      // consumer's own `style` is merged last so it can still override.
+      style={[styles.fill, viewProps.style]}
       hybridRef={wrappedHybridRef}
       origin={origin}
       destination={destination}
-      waypoints={waypoints}
-      language={language}
-      shouldSimulateRoute={shouldSimulateRoute}
-      simulationSpeedMultiplier={simulationSpeedMultiplier}
-      mute={mute}
-      colorScheme={colorScheme}
-      fontFamily={fontFamily}
+      // Coalesce the primitive props to their documented defaults (see
+      // `MapboxNavigationProps` in types.ts). Nitro's HybridView prop
+      // converters reject `null`, so a prop that transitions
+      // defined→undefined (e.g. `mute={someBoolOrUndefined}`) would throw
+      // "Value is null, expected a boolean". Always handing the native side
+      // a concrete value keeps the contract null-free.
+      language={language ?? 'en'}
+      shouldSimulateRoute={shouldSimulateRoute ?? false}
+      simulationSpeedMultiplier={simulationSpeedMultiplier ?? 1}
+      mute={mute ?? false}
+      colorScheme={colorScheme ?? 'auto'}
+      // No documented default; omit when absent so the SDK font is used.
+      // `waypoints` defaults to no intermediate stops (a direct route).
+      waypoints={waypoints ?? []}
+      {...(fontFamily !== undefined && { fontFamily })}
       onArrive={wrappedOnArrive}
       onError={wrappedOnError}
       onCancelNavigation={wrappedOnCancelNavigation}
@@ -138,4 +153,8 @@ export const MapboxNavigation = forwardRef<
       onReroute={wrappedOnReroute}
     />
   );
+});
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
 });

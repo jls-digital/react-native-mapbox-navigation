@@ -556,6 +556,24 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
     guard navigationViewController == nil,
           let provider = mapboxNavigationProvider else { return }
 
+    // If the host screen is mid push/pop transition, defer the embed.
+    // react-native-screens' native stack uses a UINavigationController, which
+    // sets `isUserInteractionEnabled = false` on its container for the
+    // duration of a transition and restores it on completion. Creating +
+    // embedding the heavy Mapbox NavigationViewController on the main thread
+    // *during* that window races the completion and can leave the container's
+    // interaction disabled — the nav renders but the whole screen is frozen to
+    // touch (intermittent; whether it happens depends on how the route-fetch
+    // timing lines up with the push animation, hence the network-speed feel; a
+    // fresh mount clears it). Re-run once the transition finishes so UIKit
+    // restores interaction the normal way.
+    if let coordinator = findHostViewController()?.transitionCoordinator {
+      coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+        self?.presentNavigationUI(routes: routes)
+      }
+      return
+    }
+
     subscribeToArrival(navigation: provider.mapboxNavigation.navigation())
 
     // Simulation is wired at the `MapboxNavigationProvider` level via
