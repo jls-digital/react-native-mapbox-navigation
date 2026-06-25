@@ -1,0 +1,1 @@
+{"version":3,"names":["mapToNativeCoordinates","coordinates","longitude","latitude","exports"],"sourceRoot":"../../../src","sources":["utils/coordinates-mapper.util.ts"],"mappings":";;;;;;AAEO,MAAMA,sBAAsB,GACjCC,WAAwB,IACF;EACtB,OAAO,CAACA,WAAW,CAACC,SAAS,EAAED,WAAW,CAACE,QAAQ,CAAC;AACtD,CAAC;AAACC,OAAA,CAAAJ,sBAAA,GAAAA,sBAAA","ignoreList":[]}

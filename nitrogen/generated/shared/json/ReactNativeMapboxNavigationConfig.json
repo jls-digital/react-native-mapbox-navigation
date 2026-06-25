@@ -1,0 +1,26 @@
+{
+  "uiViewClassName": "ReactNativeMapboxNavigation",
+  "supportsRawText": false,
+  "bubblingEventTypes": {},
+  "directEventTypes": {},
+  "validAttributes": {
+    "origin": true,
+    "destination": true,
+    "waypoints": true,
+    "language": true,
+    "shouldSimulateRoute": true,
+    "simulationSpeedMultiplier": true,
+    "mute": true,
+    "colorScheme": true,
+    "fontFamily": true,
+    "onArrive": true,
+    "onError": true,
+    "onCancelNavigation": true,
+    "onNavigationEnd": true,
+    "onMuteChange": true,
+    "onRouteProgressChange": true,
+    "onLocationChange": true,
+    "onReroute": true,
+    "hybridRef": true
+  }
+}
