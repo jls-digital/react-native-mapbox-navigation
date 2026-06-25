@@ -519,18 +519,25 @@ class HybridReactNativeMapboxNavigation: HybridReactNativeMapboxNavigationSpec {
   }
 
   private func buildWaypoints() -> [MapboxDirections.Waypoint] {
-    var list: [MapboxDirections.Waypoint] = []
-    list.append(MapboxDirections.Waypoint(coordinate: origin.coreLocation, name: "Origin"))
-    for (index, wp) in (waypoints ?? []).enumerated() {
+    // Ordering + silent-waypoint (separatesLegs) logic lives in the testable,
+    // SDK-free `WaypointPlanner`; map its neutral plan onto the SDK type here.
+    let plan = WaypointPlanner.plan(
+      origin: (origin.latitude, origin.longitude),
+      destination: (destination.latitude, destination.longitude),
+      waypoints: (waypoints ?? []).map {
+        (coordinate: ($0.coordinate.latitude, $0.coordinate.longitude),
+         isSilent: $0.isSilent ?? false)
+      }
+    )
+    return plan.map { planned in
       var mwp = MapboxDirections.Waypoint(
-        coordinate: wp.coordinate.coreLocation,
-        name: "Waypoint \(index + 1)"
+        coordinate: CLLocationCoordinate2D(
+          latitude: planned.latitude, longitude: planned.longitude),
+        name: planned.name
       )
-      mwp.separatesLegs = !(wp.isSilent ?? false)
-      list.append(mwp)
+      mwp.separatesLegs = planned.separatesLegs
+      return mwp
     }
-    list.append(MapboxDirections.Waypoint(coordinate: destination.coreLocation, name: "Destination"))
-    return list
   }
 
   private func emitRouteError(_ error: Error) {

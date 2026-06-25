@@ -160,4 +160,33 @@ final class PureUnitsTests: XCTestCase {
     XCTAssertFalse(LocaleUnits.usesMetric(for: Locale(identifier: "en-US")))
     XCTAssertTrue(LocaleUnits.usesMetric(for: Locale(identifier: "de-DE")))
   }
+
+  // MARK: WaypointPlanner — order, names, silent-waypoint leg splitting.
+  // Mirrors Android RouteOptionsFactory (silent waypoint → not a leg boundary).
+  func testWaypointPlannerOrderAndLegSplitting() {
+    let plan = WaypointPlanner.plan(
+      origin: (47.0, 8.0),
+      destination: (47.3, 8.3),
+      waypoints: [
+        (coordinate: (47.1, 8.1), isSilent: false),
+        (coordinate: (47.2, 8.2), isSilent: true),
+      ]
+    )
+    XCTAssertEqual(
+      plan,
+      [
+        PlannedWaypoint(latitude: 47.0, longitude: 8.0, name: "Origin", separatesLegs: true),
+        PlannedWaypoint(latitude: 47.1, longitude: 8.1, name: "Waypoint 1", separatesLegs: true),
+        // silent → does NOT separate legs
+        PlannedWaypoint(latitude: 47.2, longitude: 8.2, name: "Waypoint 2", separatesLegs: false),
+        PlannedWaypoint(latitude: 47.3, longitude: 8.3, name: "Destination", separatesLegs: true),
+      ])
+  }
+
+  func testWaypointPlannerNoWaypoints() {
+    let plan = WaypointPlanner.plan(
+      origin: (47.0, 8.0), destination: (47.3, 8.3), waypoints: [])
+    XCTAssertEqual(plan.map(\.name), ["Origin", "Destination"])
+    XCTAssertTrue(plan.allSatisfy { $0.separatesLegs })
+  }
 }
