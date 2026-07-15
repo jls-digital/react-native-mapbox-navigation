@@ -92,8 +92,25 @@
     "react-native-builder-bob": "^0.43.0",
     "react-native-nitro-modules": "^0.35.10",
     "react-test-renderer": "19.2.3",
-    "turbo": "^2.8.21",
+    "turbo": "^2.10.5",
     "typescript": "^6.0.2"
+  },
+  "resolutions": {
+    "shell-quote@^1.6.1": "1.10.0",
+    "@xmldom/xmldom@^0.8.8": "0.8.13",
+    "ws@^8.12.1": "8.21.1",
+    "ws@^7.5.10": "7.5.12",
+    "ws@^7": "7.5.12",
+    "@babel/plugin-transform-modules-systemjs@^7.29.0": "7.29.4",
+    "@babel/core": "7.29.7",
+    "brace-expansion@^5.0.5": "5.0.6",
+    "tar@^7.5.4": "7.5.16",
+    "ip-address@^10.0.1": "10.1.1",
+    "uuid@^7.0.3": "11.1.1",
+    "js-yaml@^3.13.1": "3.15.0",
+    "js-yaml@^4.1.0": "4.3.0",
+    "js-yaml@^4.1.1": "4.3.0",
+    "@ungap/structured-clone@^1.3.0": "1.3.1"
   },
   "peerDependencies": {
     "@expo/config-plugins": ">=8.0.0",
