@@ -27,10 +27,11 @@
 #   post_install do |installer|
 #     react_native_post_install(installer, ...) # existing RN call
 #     react_native_mapbox_navigation_post_install(installer)
+#     react_native_mapbox_navigation_fix_duplicate_signatures_post_install(installer)
 #   end
 #
 # Expo (CNG) consumers get this wired automatically by the library's
-# config plugin; bare RN consumers add the one line manually.
+# config plugin; bare RN consumers add the two lines manually.
 
 require 'pathname'
 
@@ -100,5 +101,67 @@ def react_native_mapbox_navigation_post_install(installer)
   Pod::UI.puts(
     "[ReactNativeMapboxNavigation] Patched #{patched} Copy Frameworks " \
     "script#{patched == 1 ? '' : 's'} to embed transitive SPM frameworks."
+  ) if defined?(Pod::UI)
+end
+
+REACT_NATIVE_MAPBOX_NAVIGATION_SIGNATURE_FIX_PHASE_NAME =
+  '[ReactNativeMapboxNavigation] Remove duplicate xcframework signatures'
+
+# Xcode 15+ bug (still present on Xcode 26.4 — see
+# https://github.com/maplibre/maplibre-react-native/issues/1489): when a
+# binary .xcframework is reachable through two linkage paths in the same
+# SPM/CocoaPods dependency graph, `xcodebuild archive` tries to copy its
+# `<Framework>.xcframework-ios.signature` into the archive's Signatures/
+# folder twice and the second copy fails with "couldn't be copied to
+# Signatures because an item with the same name already exists". This hits
+# our five transitive Mapbox frameworks because `spm_dependency` requests
+# three products (MapboxNavigationCore, MapboxNavigationUIKit,
+# MapboxDirections) from the same mapbox-navigation-ios package, and each
+# product depends on the same underlying binary frameworks — so each one
+# is reachable via more than one path.
+#
+# Fix: add a Run Script build phase to the consuming app's own target(s)
+# that deletes the stale signature file(s) before the archive step's copy
+# runs. Mirrors the accepted fix in maplibre-react-native's podspec
+# (https://github.com/maplibre/maplibre-react-native/pull/1490), which
+# moved this exact workaround from an Expo config plugin into the podspec
+# post_install so it also covers bare RN consumers.
+def react_native_mapbox_navigation_fix_duplicate_signatures_post_install(installer)
+  removal_commands = REACT_NATIVE_MAPBOX_NAVIGATION_TRANSITIVE_FRAMEWORKS.map { |framework|
+    "rm -rf \"${CONFIGURATION_BUILD_DIR}/#{framework}.xcframework-ios.signature\""
+  }.join("\n")
+
+  patched_projects = 0
+  installer.aggregate_targets
+    .map(&:user_project)
+    .uniq { |project| project.path.to_s }
+    .each do |user_project|
+    changed = false
+
+    user_project.native_targets.each do |native_target|
+      next if native_target.shell_script_build_phases.any? { |phase|
+        phase.name == REACT_NATIVE_MAPBOX_NAVIGATION_SIGNATURE_FIX_PHASE_NAME
+      }
+
+      phase = native_target.new_shell_script_build_phase(
+        REACT_NATIVE_MAPBOX_NAVIGATION_SIGNATURE_FIX_PHASE_NAME
+      )
+      phase.shell_script = removal_commands
+
+      # Run as early as possible, before Xcode's own package signature
+      # validation/copy step during archive.
+      native_target.build_phases.move(phase, 0)
+      changed = true
+    end
+
+    if changed
+      user_project.save
+      patched_projects += 1
+    end
+  end
+
+  Pod::UI.puts(
+    "[ReactNativeMapboxNavigation] Added duplicate-signature-removal build " \
+    "phase to #{patched_projects} Xcode project#{patched_projects == 1 ? '' : 's'}."
   ) if defined?(Pod::UI)
 end

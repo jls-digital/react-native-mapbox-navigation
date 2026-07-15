@@ -13,6 +13,10 @@ const PODFILE_HOOK_CALL =
   'react_native_mapbox_navigation_post_install(installer)';
 const PODFILE_HOOK_MARKER =
   '# [react-native-mapbox-navigation] embed-transitive-spm-frameworks';
+const PODFILE_SIGNATURE_FIX_HOOK_CALL =
+  'react_native_mapbox_navigation_fix_duplicate_signatures_post_install(installer)';
+const PODFILE_SIGNATURE_FIX_HOOK_MARKER =
+  '# [react-native-mapbox-navigation] fix-duplicate-xcframework-signatures';
 
 function resolveAccessToken(props) {
   const fromConfig = props && props.accessToken;
@@ -98,10 +102,12 @@ const withMapboxMavenRepoAndroid = (config) => {
 };
 
 // Inject a call to `react_native_mapbox_navigation_post_install(installer)`
-// into the generated Podfile's post_install block so the library's helper
-// (loaded by the podspec) runs during `pod install` and embeds Mapbox's
-// transitive SPM frameworks into the app bundle. Bare RN consumers add
-// the same line by hand (README); this keeps Expo CNG consumers zero-config.
+// and `react_native_mapbox_navigation_fix_duplicate_signatures_post_install(installer)`
+// into the generated Podfile's post_install block so the library's helpers
+// (loaded by the podspec) run during `pod install` and (1) embed Mapbox's
+// transitive SPM frameworks into the app bundle and (2) work around Xcode's
+// duplicate xcframework-signature archive bug. Bare RN consumers add the
+// same lines by hand (README); this keeps Expo CNG consumers zero-config.
 const withMapboxPodfilePostInstallCall = (config) => {
   return withDangerousMod(config, [
     'ios',
@@ -111,18 +117,31 @@ const withMapboxPodfilePostInstallCall = (config) => {
         'Podfile'
       );
       if (!fs.existsSync(podfilePath)) return cfg;
-      const original = fs.readFileSync(podfilePath, 'utf8');
-      if (original.includes(PODFILE_HOOK_MARKER)) return cfg;
+      let original = fs.readFileSync(podfilePath, 'utf8');
 
       const reactNativePostInstallRegex =
         /(react_native_post_install\([\s\S]*?\n\s*\))/m;
       if (!reactNativePostInstallRegex.test(original)) return cfg;
 
-      const updated = original.replace(
-        reactNativePostInstallRegex,
-        (match) =>
-          `${match}\n    ${PODFILE_HOOK_MARKER}\n    ${PODFILE_HOOK_CALL}`
-      );
+      let updated = original;
+
+      if (!original.includes(PODFILE_HOOK_MARKER)) {
+        updated = updated.replace(
+          reactNativePostInstallRegex,
+          (match) =>
+            `${match}\n    ${PODFILE_HOOK_MARKER}\n    ${PODFILE_HOOK_CALL}`
+        );
+      }
+
+      if (!original.includes(PODFILE_SIGNATURE_FIX_HOOK_MARKER)) {
+        updated = updated.replace(
+          reactNativePostInstallRegex,
+          (match) =>
+            `${match}\n    ${PODFILE_SIGNATURE_FIX_HOOK_MARKER}\n    ${PODFILE_SIGNATURE_FIX_HOOK_CALL}`
+        );
+      }
+
+      if (updated === original) return cfg;
       fs.writeFileSync(podfilePath, updated);
       return cfg;
     },
