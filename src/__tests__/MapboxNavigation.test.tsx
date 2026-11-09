@@ -45,11 +45,11 @@ interface ViewHandlers {
 const ORIGIN: Coordinates = { latitude: 47.37, longitude: 8.54 };
 const DESTINATION: Coordinates = { latitude: 46.95, longitude: 7.45 };
 
-function renderWith(
+async function renderWith(
   props: Partial<MapboxNavigationProps>,
   ref?: RefObject<MapboxNavigationRef | null>
-): ViewHandlers {
-  render(
+): Promise<ViewHandlers> {
+  await render(
     <MapboxNavigation
       ref={ref}
       origin={ORIGIN}
@@ -68,40 +68,40 @@ describe('MapboxNavigation event wrappers', () => {
   });
   afterEach(() => warnSpy.mockRestore());
 
-  it('wraps onArrive into a { nativeEvent: { destination } } event', () => {
+  it('wraps onArrive into a { nativeEvent: { destination } } event', async () => {
     const onArrive = jest.fn();
-    renderWith({ onArrive }).onArrive!(DESTINATION);
+    (await renderWith({ onArrive })).onArrive!(DESTINATION);
     expect(onArrive).toHaveBeenCalledWith({
       nativeEvent: { destination: DESTINATION },
     });
   });
 
-  it('passes a recognized error code straight through', () => {
+  it('passes a recognized error code straight through', async () => {
     const onError = jest.fn();
-    renderWith({ onError }).onError!('NETWORK_ERROR', 'offline');
+    (await renderWith({ onError })).onError!('NETWORK_ERROR', 'offline');
     expect(onError).toHaveBeenCalledWith({
       nativeEvent: { code: 'NETWORK_ERROR', message: 'offline' },
     });
   });
 
-  it('remaps an unknown error code to the fallback (component wiring)', () => {
+  it('remaps an unknown error code to the fallback (component wiring)', async () => {
     const onError = jest.fn();
-    renderWith({ onError }).onError!('FUTURE_CODE', 'weird');
+    (await renderWith({ onError })).onError!('FUTURE_CODE', 'weird');
     expect(onError).toHaveBeenCalledWith({
       nativeEvent: { code: 'SDK_INIT_FAILED', message: '[FUTURE_CODE] weird' },
     });
     expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('wraps onMuteChange into a { nativeEvent: { isMuted } } event', () => {
+  it('wraps onMuteChange into a { nativeEvent: { isMuted } } event', async () => {
     const onMuteChange = jest.fn();
-    renderWith({ onMuteChange }).onMuteChange!(true);
+    (await renderWith({ onMuteChange })).onMuteChange!(true);
     expect(onMuteChange).toHaveBeenCalledWith({
       nativeEvent: { isMuted: true },
     });
   });
 
-  it('forwards the route progress payload under nativeEvent', () => {
+  it('forwards the route progress payload under nativeEvent', async () => {
     const onRouteProgressChange = jest.fn();
     const progress = {
       distanceTraveled: 10,
@@ -109,25 +109,27 @@ describe('MapboxNavigation event wrappers', () => {
       durationRemaining: 60,
       fractionTraveled: 0.1,
     };
-    renderWith({ onRouteProgressChange }).onRouteProgressChange!(progress);
+    (await renderWith({ onRouteProgressChange })).onRouteProgressChange!(
+      progress
+    );
     expect(onRouteProgressChange).toHaveBeenCalledWith({
       nativeEvent: progress,
     });
   });
 
-  it('wraps onLocationChange into a { nativeEvent: { latitude, longitude } } event', () => {
+  it('wraps onLocationChange into a { nativeEvent: { latitude, longitude } } event', async () => {
     const onLocationChange = jest.fn();
-    renderWith({ onLocationChange }).onLocationChange!(1.5, 2.5);
+    (await renderWith({ onLocationChange })).onLocationChange!(1.5, 2.5);
     expect(onLocationChange).toHaveBeenCalledWith({
       nativeEvent: { latitude: 1.5, longitude: 2.5 },
     });
   });
 
-  it('passes through handlers that need no payload mapping', () => {
+  it('passes through handlers that need no payload mapping', async () => {
     const onCancelNavigation = jest.fn();
     const onNavigationEnd = jest.fn();
     const onReroute = jest.fn();
-    const view = renderWith({
+    const view = await renderWith({
       onCancelNavigation,
       onNavigationEnd,
       onReroute,
@@ -137,21 +139,21 @@ describe('MapboxNavigation event wrappers', () => {
     expect(view.onReroute).toBe(onReroute);
   });
 
-  it('omits a wrapped handler when the corresponding prop is absent', () => {
-    const view = renderWith({});
+  it('omits a wrapped handler when the corresponding prop is absent', async () => {
+    const view = await renderWith({});
     expect(view.onArrive).toBeUndefined();
     expect(view.onError).toBeUndefined();
     expect(view.onMuteChange).toBeUndefined();
   });
 
-  it('exposes recenterCamera / showRouteOverview that forward to the native view', () => {
+  it('exposes recenterCamera / showRouteOverview that forward to the native view', async () => {
     const ref = createRef<MapboxNavigationRef>();
-    const view = renderWith({}, ref);
+    const view = await renderWith({}, ref);
     const nativeView = {
       recenterCamera: jest.fn(),
       showRouteOverview: jest.fn(),
     };
-    act(() => view.hybridRef(nativeView));
+    await act(() => view.hybridRef(nativeView));
 
     ref.current!.recenterCamera();
     ref.current!.showRouteOverview();

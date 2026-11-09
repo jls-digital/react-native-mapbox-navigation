@@ -1,0 +1,81 @@
+appId: ch.jls.reactnative.mapboxnavigation.example
+name: Launch the example app in the dev client and land on the home screen
+---
+# Shared by every tc_*.yaml flow: fresh launch, connect the expo-dev-client to
+# Metro and dismiss the dev menu it shows on first launch. Keep the dev-client
+# UI handling here so a dev-client UI change only needs one fix.
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      # Older dev clients showed a manual URL field; current ones list the
+      # Metro server (reached via `adb reverse tcp:8081 tcp:8081`, which
+      # run-all.sh sets up) directly, so both taps are optional.
+      - tapOn:
+          text: 'exp://'
+          optional: true
+      - tapOn:
+          text: 'Connect'
+          optional: true
+      - extendedWaitUntil:
+          visible: 'Continue'
+          timeout: 60000
+          optional: true
+      - runFlow:
+          when:
+            visible: 'Continue'
+          commands:
+            - tapOn: 'Continue'
+      - runFlow:
+          when:
+            visible: 'Go home'
+          commands:
+            - pressKey: Back
+# Fresh install: the dev client renders its server list a beat after launch.
+# Wait for it (optional) so the conditional tap below isn't skipped by an
+# instantaneous visibility check that runs before the UI has drawn.
+- extendedWaitUntil:
+    visible:
+      text: 'http://(localhost|10\.0\.2\.2|[0-9.]+):8081'
+    timeout: 15000
+    optional: true
+- runFlow:
+    when:
+      visible:
+        text: 'http://(localhost|10\.0\.2\.2|[0-9.]+):8081'
+    commands:
+      - tapOn:
+          text: 'http://(localhost|10\.0\.2\.2|[0-9.]+):8081'
+- runFlow:
+    when:
+      visible: 'Continue'
+    commands:
+      - tapOn: 'Continue'
+# First launch shows the dev menu after connecting.
+# iOS: a bottom sheet; tap the backdrop above it to dismiss.
+- runFlow:
+    when:
+      platform: iOS
+      visible: 'Fast refresh'
+    commands:
+      - tapOn:
+          point: '50%, 8%'
+# Android: a swipe-dismissable bottom sheet (Reload / Go home / …). Wait for
+# it, since it can appear a moment after the bundle loads.
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: 'Go home'
+          timeout: 15000
+          optional: true
+      - runFlow:
+          when:
+            visible: 'Go home'
+          commands:
+            - swipe:
+                direction: DOWN
+                duration: 400

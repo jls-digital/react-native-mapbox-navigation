@@ -1,3 +1,5 @@
 # These folders are generated with prebuild (CNG)
 android/
 ios/
+# Output of `yarn build:web` (expo export)
+dist/

@@ -13,6 +13,11 @@ This project is a monorepo managed using [Yarn workspaces](https://yarnpkg.com/f
 
 To get started with the project, make sure you have the correct version of [Node.js](https://nodejs.org/) installed. See the [`.nvmrc`](./.nvmrc) file for the version used in this project.
 
+For the native example builds you also need:
+
+- **Android: JDK 17 or newer.** Both JDK 17 (used in CI) and the JDK 25 bundled with Android Studio work.
+- **iOS: Xcode 27** to run the example on iOS 27 simulators. CI builds with the newest Xcode 26 available on the GitHub macOS runners.
+
 Run `yarn` in the root directory to install the required dependencies for each package:
 
 ```sh
@@ -52,6 +57,8 @@ To start the packager:
 yarn example start
 ```
 
+Don't start Metro with `CI=1`: Expo CLI then doesn't register the dev server, and the dev client shows "No development servers found".
+
 To run the example app on Android:
 
 ```sh
@@ -71,6 +78,8 @@ Running "ReactNativeMapboxNavigationExample" with {"fabric":true,"initialProps":
 ```
 
 Note the `"fabric":true` and `"concurrentRoot":true` properties.
+
+The Maestro end-to-end flows for iOS and Android are described in [`.maestro/README.md`](./.maestro/README.md).
 
 To run the example app on Web:
 
