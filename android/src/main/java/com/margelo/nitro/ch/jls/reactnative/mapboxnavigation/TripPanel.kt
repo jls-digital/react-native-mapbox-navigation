@@ -156,7 +156,11 @@ internal class TripPanel(
       // .toString() strips the SpannableString's AbsoluteSizeSpan(px)
       // that would otherwise blow up the digit glyphs past the TextView
       // height and clip them against the dock's top edge.
-      durationText.text = f.getTimeRemaining(tripUpdate.currentLegTimeRemaining).toString()
+      // Whole-route time, not currentLegTimeRemaining: every non-silent
+      // waypoint starts a new leg, so the leg value would only count down to
+      // the next waypoint while distance and arrival time cover the full
+      // route. Matches iOS and the fallback below (progress.durationRemaining).
+      durationText.text = f.getTimeRemaining(tripUpdate.totalTimeRemaining).toString()
       distanceText.text = f.getDistanceRemaining(tripUpdate.distanceRemaining).toString()
       arrivalTimeText.text = f.getEstimatedTimeToArrival(tripUpdate.estimatedTimeToArrival).toString()
     } else {
